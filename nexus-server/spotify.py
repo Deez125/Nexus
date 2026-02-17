@@ -354,8 +354,8 @@ async def seek(position_ms: int):
 
 
 @router.get("/search")
-async def search(q: str, type: str = "track", limit: int = 20):
-    """Search Spotify"""
+async def search(q: str, type: str = "track,album,artist", limit: int = 20):
+    """Search Spotify for tracks, albums, and artists"""
     if "access_token" not in tokens:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -367,5 +367,59 @@ async def search(q: str, type: str = "track", limit: int = 20):
 
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail="Search failed")
+
+        return response.json()
+
+
+@router.get("/artist/{artist_id}")
+async def get_artist(artist_id: str):
+    """Get artist details"""
+    if "access_token" not in tokens:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SPOTIFY_API_BASE}/artists/{artist_id}",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"}
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to get artist")
+
+        return response.json()
+
+
+@router.get("/artist/{artist_id}/albums")
+async def get_artist_albums(artist_id: str, include_groups: str = "album,single", limit: int = 50):
+    """Get artist's albums and singles"""
+    if "access_token" not in tokens:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums?include_groups={include_groups}&limit={limit}",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"}
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to get artist albums")
+
+        return response.json()
+
+
+@router.get("/album/{album_id}")
+async def get_album(album_id: str):
+    """Get album details with tracks"""
+    if "access_token" not in tokens:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SPOTIFY_API_BASE}/albums/{album_id}",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"}
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to get album")
 
         return response.json()
