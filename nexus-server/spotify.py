@@ -390,14 +390,16 @@ async def get_artist(artist_id: str):
 
 
 @router.get("/artist/{artist_id}/albums")
-async def get_artist_albums(artist_id: str, include_groups: str = "album,single", limit: int = 50):
+async def get_artist_albums(artist_id: str, limit: int = 50):
     """Get artist's albums and singles"""
     if "access_token" not in tokens:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient() as client:
+        # Spotify API expects include_groups as separate values or URL-encoded
         response = await client.get(
-            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums?include_groups={include_groups}&limit={limit}",
+            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums",
+            params={"include_groups": "album,single", "limit": limit, "market": "US"},
             headers={"Authorization": f"Bearer {tokens['access_token']}"}
         )
 
