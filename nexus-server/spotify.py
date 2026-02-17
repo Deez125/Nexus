@@ -396,14 +396,16 @@ async def get_artist_albums(artist_id: str, limit: int = 50):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient() as client:
-        # Just get all albums without filtering by include_groups
         response = await client.get(
-            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums?limit={limit}",
+            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums",
+            params={"limit": limit},
             headers={"Authorization": f"Bearer {tokens['access_token']}"}
         )
 
+        # Log for debugging
         if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail="Failed to get artist albums")
+            print(f"Spotify albums error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=response.status_code, detail=f"Failed to get artist albums: {response.text}")
 
         return response.json()
 
