@@ -8,6 +8,7 @@ import { ImPhoneHangUp } from "react-icons/im";
 import { GoScreenFull, GoScreenNormal } from "react-icons/go";
 import { TiMicrophone } from "react-icons/ti";
 import { LuScreenShare, LuScreenShareOff } from "react-icons/lu";
+import { TbLayoutSidebarRightExpandFilled, TbLayoutSidebarLeftExpandFilled } from "react-icons/tb";
 
 // ─── WebRTC Configuration ─────────────────────────────────────────────────────
 const RTC_CONFIG: RTCConfiguration = {
@@ -1071,6 +1072,7 @@ export default function App() {
   const [friendsTab, setFriendsTab] = useState("all");
   const [contextMenu, setContextMenu] = useState<{ show: boolean; x: number; y: number; type: string; data?: any }>({ show: false, x: 0, y: 0, type: "" });
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callAreaRef = useRef<HTMLDivElement>(null);
 
@@ -1296,7 +1298,7 @@ export default function App() {
       <div style={s.app} onContextMenu={(e) => handleContextMenu(e, "general")}>
         {/* ─── Left: Friends ─── */}
         <div style={s.leftPanel}>
-          <div style={{ padding: "8px 12px 0", fontFamily: "'Courier New', monospace", fontSize: "14px", fontWeight: 700, letterSpacing: "2px", color: T.accent, textShadow: `0 0 10px ${T.accent}40` }}>
+          <div style={{ padding: "14px 12px 6px", fontFamily: "'Courier New', monospace", fontSize: "24px", fontWeight: 700, letterSpacing: "4px", color: T.accent, textShadow: `0 0 15px ${T.accent}60` }}>
             {">"} NEXUS_
           </div>
           <div style={{ padding: "8px 12px 8px" }}>
@@ -1370,15 +1372,24 @@ export default function App() {
                     <div style={{ fontSize: 11, color: T.textMuted, marginTop: 1 }}>{friend.activity || statusLabel(friend.status)}</div>
                   </div>
                 </div>
-                {!inCall && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {!inCall && (
+                    <button
+                      style={{ ...s.callBtn, background: T.green }}
+                      onClick={() => startCall()}
+                    >
+                      <IoCall size={16} />
+                      <span>Call</span>
+                    </button>
+                  )}
                   <button
-                    style={{ ...s.callBtn, background: T.green }}
-                    onClick={() => startCall()}
+                    style={{ ...s.iconBtn, color: T.text }}
+                    onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
+                    title={rightSidebarOpen ? "Close sidebar" : "Open sidebar"}
                   >
-                    <IoCall size={16} />
-                    <span>Call</span>
+                    {rightSidebarOpen ? <TbLayoutSidebarLeftExpandFilled size={20} /> : <TbLayoutSidebarRightExpandFilled size={20} />}
                   </button>
-                )}
+                </div>
               </div>
 
               {/* Incoming call UI - shows when friend is calling but we haven't joined */}
@@ -1681,16 +1692,15 @@ export default function App() {
               {/* Input */}
               <div style={s.inputArea}>
                 <div style={s.inputRow}>
-                  <button style={s.inputIconBtn}><HiPlus size={20} /></button>
+                  <InputIconBtn><HiPlus size={20} /></InputIconBtn>
                   <input style={s.msgInput} placeholder={`Message @${friend.name}`} value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && message.trim()) handleSendMessage(); }} />
                   <div style={s.inputActions}>
                     <div style={{ position: "relative" }}>
-                      <button style={s.inputIconBtn} onClick={() => setShowGifPicker(!showGifPicker)}>
+                      <InputIconBtn onClick={() => setShowGifPicker(!showGifPicker)}>
                         <span style={{ fontSize: 11, fontWeight: 700 }}>GIF</span>
-                      </button>
+                      </InputIconBtn>
                       {showGifPicker && <GifPicker onClose={() => setShowGifPicker(false)} />}
                     </div>
-                    <button style={s.inputIconBtn}><BsEmojiSmile size={18} /></button>
                     {message.trim() && (
                       <button style={s.sendBtn} onClick={handleSendMessage}><IoMdSend size={16} /></button>
                     )}
@@ -1705,6 +1715,11 @@ export default function App() {
           )}
         </div>
 
+        {/* Right Sidebar */}
+        {rightSidebarOpen && (
+          <div style={{ width: 280, minWidth: 280, background: T.bg0, borderLeft: `1px solid ${T.border}` }} />
+        )}
+
         {/* Context Menu */}
         {contextMenu.show && (
           <ContextMenu x={contextMenu.x} y={contextMenu.y} type={contextMenu.type} data={contextMenu.data} onClose={() => setContextMenu({ show: false, x: 0, y: 0, type: "" })} />
@@ -1715,6 +1730,20 @@ export default function App() {
 }
 
 // ─── Sub Components ──────────────────────────────────────────────────────────
+
+function InputIconBtn({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+  const [h, setH] = useState(false);
+  return (
+    <button
+      style={{ ...s.inputIconBtn, background: h ? T.bg3 : "transparent", color: h ? T.text : T.textMuted }}
+      onMouseEnter={() => setH(true)}
+      onMouseLeave={() => setH(false)}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
 
 function FriendItem({ friend, active, onClick, onContextMenu }: { friend: { id: number; name: string; status: string; activity: string | null; color: string; unread: number }; active: boolean; onClick: () => void; onContextMenu: (e: React.MouseEvent) => void }) {
   const [h, setH] = useState(false);
