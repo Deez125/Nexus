@@ -1296,7 +1296,10 @@ export default function App() {
       <div style={s.app} onContextMenu={(e) => handleContextMenu(e, "general")}>
         {/* ─── Left: Friends ─── */}
         <div style={s.leftPanel}>
-          <div style={{ padding: "12px 12px 8px" }}>
+          <div style={{ padding: "8px 12px 0", fontFamily: "'Courier New', monospace", fontSize: "14px", fontWeight: 700, letterSpacing: "2px", color: T.accent, textShadow: `0 0 10px ${T.accent}40` }}>
+            {">"} NEXUS_
+          </div>
+          <div style={{ padding: "8px 12px 8px" }}>
             <input style={s.searchInput} placeholder="Search friends..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           </div>
 
