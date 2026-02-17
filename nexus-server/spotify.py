@@ -396,10 +396,9 @@ async def get_artist_albums(artist_id: str, limit: int = 50):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient() as client:
-        # Spotify API expects include_groups as separate values or URL-encoded
+        # Just get all albums without filtering by include_groups
         response = await client.get(
-            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums",
-            params={"include_groups": "album,single", "limit": limit, "market": "US"},
+            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums?limit={limit}",
             headers={"Authorization": f"Bearer {tokens['access_token']}"}
         )
 
