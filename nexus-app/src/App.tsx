@@ -1776,7 +1776,7 @@ function SpotifyControlBtn({ children, onClick, size = 32, active = false }: { c
 // Spotify API base URL - uses relative path which will be proxied in dev or direct in prod
 const SPOTIFY_API = window.location.hostname === "localhost" ? "http://localhost:8765/api/spotify" : "https://nexus-api.pulpfliction.com/api/spotify";
 
-function SpotifySidebar({ isConnected, onConnect, onDisconnect }: { isConnected: boolean; onConnect: () => void; onDisconnect: () => void }) {
+function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }: { isConnected: boolean; onConnect: () => void; onDisconnect: () => void }) {
   const [activeTab, setActiveTab] = useState<"playing" | "playlists" | "search">("playing");
   const [isPlaying, setIsPlaying] = useState(false);
   const [shuffle, setShuffle] = useState(false);
