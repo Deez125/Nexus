@@ -55,6 +55,10 @@ class NexusServer:
         from dashboard import router as dashboard_router
         self.app.include_router(dashboard_router)
 
+        # Import and include Spotify routes
+        from spotify import router as spotify_router
+        self.app.include_router(spotify_router)
+
         @self.app.get("/api/stats")
         async def get_stats():
             """API endpoint for dashboard stats"""
