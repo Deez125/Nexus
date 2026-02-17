@@ -139,12 +139,18 @@ DASHBOARD_HTML = """
 
         .client-row {
             display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 12px;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px;
             background: #0a0a0a;
             border-radius: 6px;
             margin-bottom: 8px;
+        }
+
+        .client-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .client-avatar {
@@ -158,26 +164,35 @@ DASHBOARD_HTML = """
             font-size: 12px;
             font-weight: 700;
             color: #fff;
+            flex-shrink: 0;
         }
 
         .client-info {
             flex: 1;
+            min-width: 0;
         }
 
         .client-name {
             font-size: 13px;
             font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .client-id {
             font-size: 10px;
             color: #666;
             margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .client-badges {
             display: flex;
-            gap: 6px;
+            flex-wrap: wrap;
+            gap: 4px;
         }
 
         .badge {
@@ -186,6 +201,7 @@ DASHBOARD_HTML = """
             font-size: 9px;
             font-weight: 600;
             text-transform: uppercase;
+            white-space: nowrap;
         }
 
         .badge-call {
@@ -426,15 +442,17 @@ DASHBOARD_HTML = """
                 if (stats.client_list && stats.client_list.length > 0) {
                     clientsList.innerHTML = stats.client_list.map(client => `
                         <div class="client-row">
-                            <div class="client-avatar">${client.username.charAt(0).toUpperCase()}</div>
-                            <div class="client-info">
-                                <div class="client-name">${client.username}</div>
-                                <div class="client-id">${client.id.substring(0, 16)}...</div>
+                            <div class="client-header">
+                                <div class="client-avatar">${client.username.charAt(0).toUpperCase()}</div>
+                                <div class="client-info">
+                                    <div class="client-name">${client.username}</div>
+                                    <div class="client-id">${client.id.substring(0, 16)}...</div>
+                                </div>
                             </div>
                             <div class="client-badges">
-                                ${client.in_call ? '<span class="badge badge-call">Call</span>' : ''}
-                                ${client.has_audio ? '<span class="badge badge-audio">Audio</span>' : ''}
-                                ${client.has_video ? '<span class="badge badge-video">Video</span>' : ''}
+                                ${client.in_call ? '<span class="badge badge-call">In Call</span>' : '<span class="badge" style="background: rgba(100,100,100,0.15); color: #666;">Not in Call</span>'}
+                                ${client.has_audio ? '<span class="badge badge-audio">Audio On</span>' : '<span class="badge" style="background: rgba(100,100,100,0.15); color: #666;">Audio Off</span>'}
+                                ${client.has_video ? '<span class="badge badge-video">Video On</span>' : '<span class="badge" style="background: rgba(100,100,100,0.15); color: #666;">Video Off</span>'}
                                 ${client.has_screen ? '<span class="badge badge-screen">Screen</span>' : ''}
                             </div>
                         </div>
