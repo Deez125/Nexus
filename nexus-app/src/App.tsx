@@ -2025,31 +2025,43 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
     if (!artistId) return;
     setLoading(true);
     try {
-      const [artistRes, albumsRes] = await Promise.all([
-        fetch(`${SPOTIFY_API}/artist/${artistId}`),
-        fetch(`${SPOTIFY_API}/artist/${artistId}/albums`)
-      ]);
-      if (artistRes.ok && albumsRes.ok) {
+      const artistRes = await fetch(`${SPOTIFY_API}/artist/${artistId}`);
+      if (artistRes.ok) {
         const artist = await artistRes.json();
-        const albumsData = await albumsRes.json();
+
+        // Try to get albums, but don't fail if it doesn't work
+        let albums: { id: string; name: string; image: string; uri: string; releaseDate: string; type: string }[] = [];
+        try {
+          const albumsRes = await fetch(`${SPOTIFY_API}/artist/${artistId}/albums`);
+          if (albumsRes.ok) {
+            const albumsData = await albumsRes.json();
+            albums = (albumsData.items || []).map((a: any) => ({
+              id: a.id,
+              name: a.name,
+              image: a.images?.[0]?.url || "",
+              uri: a.uri,
+              releaseDate: a.release_date || "",
+              type: a.album_type || "album",
+            }));
+          } else {
+            const errText = await albumsRes.text();
+            console.error("Albums API error:", albumsRes.status, errText);
+          }
+        } catch (albumErr) {
+          console.error("Albums fetch error:", albumErr);
+        }
+
         setArtistView({
           id: artist.id,
           name: artist.name,
           image: artist.images?.[0]?.url || "",
           followers: artist.followers?.total || 0,
-          albums: (albumsData.items || []).map((a: any) => ({
-            id: a.id,
-            name: a.name,
-            image: a.images?.[0]?.url || "",
-            uri: a.uri,
-            releaseDate: a.release_date || "",
-            type: a.album_type || "album",
-          })),
+          albums,
         });
         if (activeTab !== "artist") setPreviousTab(activeTab as "playing" | "playlists" | "search");
         setActiveTab("artist");
       } else {
-        console.error("Artist API error:", artistRes.status, albumsRes.status);
+        console.error("Artist API error:", artistRes.status);
       }
     } catch (e) {
       console.error("Failed to get artist:", e);
