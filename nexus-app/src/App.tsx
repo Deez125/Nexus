@@ -2022,6 +2022,7 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
 
   // Open artist page
   const openArtist = async (artistId: string) => {
+    if (!artistId) return;
     setLoading(true);
     try {
       const [artistRes, albumsRes] = await Promise.all([
@@ -2047,6 +2048,8 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
         });
         if (activeTab !== "artist") setPreviousTab(activeTab as "playing" | "playlists" | "search");
         setActiveTab("artist");
+      } else {
+        console.error("Artist API error:", artistRes.status, albumsRes.status);
       }
     } catch (e) {
       console.error("Failed to get artist:", e);
