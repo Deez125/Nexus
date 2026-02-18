@@ -251,6 +251,11 @@ function useNexusSocket(username: string, onWebRTCSignal?: WebRTCSignalCallback)
   }, []);
 
   useEffect(() => {
+    // Don't connect if this is the OAuth callback popup
+    if (window.location.pathname === "/callback") {
+      return;
+    }
+
     // Prevent double connection in React StrictMode
     if (isConnectingRef.current || wsRef.current?.readyState === WebSocket.OPEN) {
       return;
