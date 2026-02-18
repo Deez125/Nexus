@@ -2035,6 +2035,7 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
           const albumsRes = await fetch(`${SPOTIFY_API}/artist/${artistId}/albums`);
           if (albumsRes.ok) {
             const albumsData = await albumsRes.json();
+            console.log("Albums data:", albumsData.items?.map((a: any) => ({ name: a.name, type: a.album_type })));
             albums = (albumsData.items || []).map((a: any) => ({
               id: a.id,
               name: a.name,
