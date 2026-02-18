@@ -63,21 +63,10 @@ function modifySdpForAudioQuality(sdp: string): string {
 }
 
 // ─── WebSocket Hook ───────────────────────────────────────────────────────────
-// WebSocket URL configuration:
-// - In development: uses current hostname with port 8765
-// - In production: set VITE_WS_URL environment variable (e.g., wss://api.yourdomain.com/ws)
-const getWebSocketUrl = () => {
-  // Check for environment variable first (for production deployment)
-  if (import.meta.env.VITE_WS_URL) {
-    return import.meta.env.VITE_WS_URL;
-  }
-  // Fallback to dynamic URL based on current host (for local/LAN development)
-  const host = window.location.hostname || "localhost";
-  const port = 8765;
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${host}:${port}/ws`;
-};
-const WS_URL = getWebSocketUrl();
+// WebSocket URL: localhost -> local server, production -> production server
+const WS_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "ws://localhost:8765/ws"
+  : "wss://nexus-api.pulpfliction.com/ws";
 
 interface Message {
   id: number;
