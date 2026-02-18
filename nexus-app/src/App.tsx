@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { IoSettings, IoRefresh, IoCall, IoChevronDown } from "react-icons/io5";
 import { FaCopy, FaPaste, FaMicrophoneSlash } from "react-icons/fa";
 import { HiPhone, HiDesktopComputer, HiReply, HiTrash, HiUserCircle, HiPencil, HiVolumeUp, HiBan, HiChatAlt2, HiDotsHorizontal, HiPlus } from "react-icons/hi";
@@ -1067,6 +1068,7 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [spotifyConnected, setSpotifyConnected] = useState(false);
+  const [debugUsers, setDebugUsers] = useState<{ id: string; name: string; color: string }[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callAreaRef = useRef<HTMLDivElement>(null);
 
@@ -1159,22 +1161,16 @@ export default function App() {
   // Find if Spotify bot is in the call
   const spotifyBotInCall = users.find(u => u.username === "Spotify" && u.in_call);
 
-  // Count total participants in call for grid layout (me + friend + spotify bot + waiting placeholder)
-  const participantCount = 1 + (friendInCall ? 1 : 1) + (spotifyBotInCall ? 1 : 0); // Always count at least 2 (me + friend/waiting)
+  // Count total participants in call for grid layout (me + friend + spotify bot + waiting placeholder + debug users)
+  const participantCount = 1 + (friendInCall ? 1 : 1) + (spotifyBotInCall ? 1 : 0) + debugUsers.length;
 
-  // Calculate tile size based on participant count - tiles must ALWAYS be 16:9
-  const getTileSize = (count: number) => {
-    // Calculate tile dimensions to fit nicely while maintaining 16:9
-    // For 2 tiles: side by side, larger
-    // For 3-4 tiles: 2x2 grid arrangement, medium
-    // For 5-6 tiles: 3x2 grid arrangement, smaller
-    if (count <= 2) {
-      return { width: "min(45vw, 640px)", height: "auto" };
-    } else if (count <= 4) {
-      return { width: "min(40vw, 480px)", height: "auto" };
-    } else {
-      return { width: "min(30vw, 380px)", height: "auto" };
-    }
+  // Calculate tile width - bigger tiles that force 2 per row for 1-4 users
+  const getTileWidth = (count: number) => {
+    if (count <= 2) return "47%"; // 1-2 users - big tiles
+    if (count <= 4) return "42%"; // 3-4 users - slightly smaller but still 2 per row
+    if (count <= 6) return "31%"; // 5-6 users - 3 cols
+    if (count <= 9) return "28%"; // 7-9 users - 3 cols but smaller
+    return "23%"; // 10+ users - 4 cols
   };
 
   // Debug: log when users state changes
@@ -1466,23 +1462,33 @@ export default function App() {
                       justifyContent: "center",
                       alignItems: "center",
                       alignContent: "center",
-                      flex: 1,
-                      padding: "40px 60px",
                       gap: 16,
-                      maxHeight: "calc(100vh - 120px)",
+                      flex: 1,
+                      padding: "20px",
+                      maxHeight: "calc(100vh - 80px)",
                       width: "100%",
+                      maxWidth: "100%",
+                      margin: "0 auto",
                     } : {})
                   }}>
                     {/* My tile - camera or avatar */}
-                    <div style={{
-                      ...s.callTile,
-                      ...(isFullscreen ? {
-                        ...getTileSize(participantCount),
-                        aspectRatio: "16/9",
-                        flex: "none",
-                      } : {}),
-                      ...(!isFullscreen && myScreen ? { order: 2 } : {})
-                    }}>
+                    <div
+                      style={{
+                        ...s.callTile,
+                        ...(isFullscreen ? {
+                          width: getTileWidth(participantCount),
+                          maxWidth: "none",
+                          flexShrink: 0,
+                          aspectRatio: "16/9",
+                        } : {}),
+                        ...(!isFullscreen && myScreen ? { order: 2 } : {})
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setContextMenu({ show: true, x: e.clientX, y: e.clientY, type: "tile", data: { tileId: "me", tileName: myUsername } });
+                      }}
+                    >
                       {myCamera && localVideoStream ? (
                         <VideoElement stream={localVideoStream} muted mirrored />
                       ) : (
@@ -1496,15 +1502,23 @@ export default function App() {
 
                     {/* Friend tile - only shows if friend is in the call */}
                     {friendInCall && (
-                      <div style={{
-                        ...s.callTile,
-                        ...(isFullscreen ? {
-                          ...getTileSize(participantCount),
-                          aspectRatio: "16/9",
-                          flex: "none",
-                        } : {}),
-                        ...(!isFullscreen && (myScreen || friendHasScreen) ? { order: 3 } : {})
-                      }}>
+                      <div
+                        style={{
+                          ...s.callTile,
+                          ...(isFullscreen ? {
+                            width: getTileWidth(participantCount),
+                            maxWidth: "none",
+                            flexShrink: 0,
+                            aspectRatio: "16/9",
+                          } : {}),
+                          ...(!isFullscreen && (myScreen || friendHasScreen) ? { order: 3 } : {})
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setContextMenu({ show: true, x: e.clientX, y: e.clientY, type: "tile", data: { tileId: friendInCall.client_id, tileName: friend.name } });
+                        }}
+                      >
                         {friendHasVideo && remoteVideoStream ? (
                           <VideoElement stream={remoteVideoStream} />
                         ) : (
@@ -1522,9 +1536,10 @@ export default function App() {
                       <div style={{
                         ...s.callTile,
                         ...(isFullscreen ? {
-                          ...getTileSize(participantCount),
+                          width: getTileWidth(participantCount),
+                          maxWidth: "none",
+                          flexShrink: 0,
                           aspectRatio: "16/9",
-                          flex: "none",
                         } : { order: 1 })
                       }}>
                         <div style={s.screenSharePlaceholder}>
@@ -1538,15 +1553,23 @@ export default function App() {
 
                     {/* Spotify bot tile - shows when bot is in call */}
                     {spotifyBotInCall && (
-                      <div style={{
-                        ...s.callTile,
-                        ...(isFullscreen ? {
-                          ...getTileSize(participantCount),
-                          aspectRatio: "16/9",
-                          flex: "none",
-                        } : {}),
-                        order: 99
-                      }}>
+                      <div
+                        style={{
+                          ...s.callTile,
+                          ...(isFullscreen ? {
+                            width: getTileWidth(participantCount),
+                            maxWidth: "none",
+                            flexShrink: 0,
+                            aspectRatio: "16/9",
+                          } : {}),
+                          order: 99
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setContextMenu({ show: true, x: e.clientX, y: e.clientY, type: "tile", data: { tileId: "spotify", tileName: "Spotify" } });
+                        }}
+                      >
                         <div style={s.voicePlaceholder}>
                           <BsSpotify size={48} color="#1DB954" />
                           <div style={{ fontSize: 13, fontWeight: 500, marginTop: 8 }}>Spotify</div>
@@ -1555,14 +1578,42 @@ export default function App() {
                       </div>
                     )}
 
+                    {/* Debug user tiles for testing */}
+                    {debugUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        style={{
+                          ...s.callTile,
+                          ...(isFullscreen ? {
+                            width: getTileWidth(participantCount),
+                            maxWidth: "none",
+                            flexShrink: 0,
+                            aspectRatio: "16/9",
+                          } : {}),
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setContextMenu({ show: true, x: e.clientX, y: e.clientY, type: "tile", data: { tileId: user.id, tileName: user.name } });
+                        }}
+                      >
+                        <div style={s.voicePlaceholder}>
+                          <div style={{ ...s.avatarXl, background: user.color }}>{user.name[0]}</div>
+                          <div style={{ fontSize: 13, fontWeight: 500, marginTop: 8 }}>{user.name}</div>
+                        </div>
+                        <div style={s.tileName}>{user.name}</div>
+                      </div>
+                    ))}
+
                     {/* Waiting for friend to join - shows when friend not in call */}
                     {!friendInCall && (
                       <div style={{
                         ...s.callTile,
                         ...(isFullscreen ? {
-                          ...getTileSize(participantCount),
+                          width: getTileWidth(participantCount),
+                          maxWidth: "none",
+                          flexShrink: 0,
                           aspectRatio: "16/9",
-                          flex: "none",
                         } : {}),
                         ...(!isFullscreen && myScreen ? { order: 3 } : {}),
                         background: T.bg3,
@@ -1581,9 +1632,10 @@ export default function App() {
                       <div style={{
                         ...s.callTile,
                         ...(isFullscreen ? {
-                          ...getTileSize(participantCount),
+                          width: getTileWidth(participantCount),
+                          maxWidth: "none",
+                          flexShrink: 0,
                           aspectRatio: "16/9",
-                          flex: "none",
                         } : { order: 1 })
                       }}>
                         <div style={s.screenSharePlaceholder}>
@@ -1611,6 +1663,7 @@ export default function App() {
                         onStartMonitoring={startMonitoring}
                         onStopMonitoring={stopMonitoring}
                         onRefreshDevices={refreshDevices}
+                        openUpward={isFullscreen}
                       />
                       <CallBtnWithDropdown
                         icon={myCamera ? <BsCameraVideoFill size={20} /> : <BsCameraVideoOffFill size={20} />}
@@ -1618,6 +1671,7 @@ export default function App() {
                         active={myCamera}
                         tooltip={myCamera ? "Turn Off Camera" : "Turn On Camera"}
                         colorMode="green"
+                        openUpward={isFullscreen}
                         dropdownItems={[
                           { label: "Default Camera", onClick: () => {} },
                           { label: "External Webcam", onClick: () => {} },
@@ -1630,6 +1684,7 @@ export default function App() {
                         active={myScreen}
                         tooltip={myScreen ? "Stop Sharing" : "Share Your Screen"}
                         colorMode="green"
+                        openUpward={isFullscreen}
                         dropdownItems={[
                           { label: "Entire Screen", onClick: () => {} },
                           { label: "Application Window", onClick: () => {} },
@@ -1637,9 +1692,68 @@ export default function App() {
                         ]}
                       />
                       <EndCallBtn onClick={endCall} />
+                      {/* Debug button to add test users */}
+                      <CallBtnWithDropdown
+                        icon={<HiPlus size={20} />}
+                        onClick={() => {
+                          const colors = ["#e91e63", "#9c27b0", "#673ab7", "#3f51b5", "#2196f3", "#00bcd4", "#009688", "#4caf50", "#ff9800", "#ff5722"];
+                          const names = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Henry", "Iris", "Jack"];
+                          const availableNames = names.filter(n => !debugUsers.some(u => u.name === n));
+                          if (availableNames.length > 0) {
+                            const name = availableNames[0];
+                            setDebugUsers([...debugUsers, {
+                              id: `debug_${Date.now()}`,
+                              name,
+                              color: colors[names.indexOf(name) % colors.length]
+                            }]);
+                          }
+                        }}
+                        active={false}
+                        tooltip="Add Debug User"
+                        colorMode="green"
+                        openUpward={isFullscreen}
+                        dropdownItems={[
+                          { label: "Add User", onClick: () => {
+                            const colors = ["#e91e63", "#9c27b0", "#673ab7", "#3f51b5", "#2196f3", "#00bcd4", "#009688", "#4caf50", "#ff9800", "#ff5722"];
+                            const names = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Henry", "Iris", "Jack"];
+                            const availableNames = names.filter(n => !debugUsers.some(u => u.name === n));
+                            if (availableNames.length > 0) {
+                              const name = availableNames[0];
+                              setDebugUsers([...debugUsers, {
+                                id: `debug_${Date.now()}`,
+                                name,
+                                color: colors[names.indexOf(name) % colors.length]
+                              }]);
+                            }
+                          }},
+                          { label: "Remove All", onClick: () => setDebugUsers([]) },
+                        ]}
+                      />
                     </div>
                     <FullscreenBtn isFullscreen={isFullscreen} onClick={toggleFullscreen} />
                   </div>
+
+                  {/* Context Menu inside fullscreen container so it appears above fullscreen layer */}
+                  {isFullscreen && contextMenu.show && (
+                    <ContextMenu
+                      x={contextMenu.x}
+                      y={contextMenu.y}
+                      type={contextMenu.type}
+                      data={contextMenu.data}
+                      onClose={() => setContextMenu({ show: false, x: 0, y: 0, type: "" })}
+                      onTileAction={(action, tileId) => {
+                        if (action === "disconnect") {
+                          if (tileId === "me") {
+                            endCall();
+                          } else if (tileId === "spotify") {
+                            fetch("https://nexus-api.pulpfliction.com/api/spotify/bot/leave", { method: "POST" });
+                          } else if (tileId.startsWith("debug_")) {
+                            setDebugUsers(debugUsers.filter(u => u.id !== tileId));
+                          }
+                        }
+                      }}
+                    />
+                  )}
                 </div>
               )}
 
@@ -1748,11 +1862,30 @@ export default function App() {
           <SpotifySidebar isConnected={spotifyConnected} onConnect={() => setSpotifyConnected(true)} onDisconnect={() => setSpotifyConnected(false)} />
         )}
 
-        {/* Context Menu */}
-        {contextMenu.show && (
-          <ContextMenu x={contextMenu.x} y={contextMenu.y} type={contextMenu.type} data={contextMenu.data} onClose={() => setContextMenu({ show: false, x: 0, y: 0, type: "" })} />
-        )}
       </div>
+
+      {/* Context Menu - rendered via portal when NOT in fullscreen (fullscreen has its own inside the container) */}
+      {!isFullscreen && contextMenu.show && createPortal(
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          type={contextMenu.type}
+          data={contextMenu.data}
+          onClose={() => setContextMenu({ show: false, x: 0, y: 0, type: "" })}
+          onTileAction={(action, tileId) => {
+            if (action === "disconnect") {
+              if (tileId === "me") {
+                endCall();
+              } else if (tileId === "spotify") {
+                fetch("https://nexus-api.pulpfliction.com/api/spotify/bot/leave", { method: "POST" });
+              } else if (tileId.startsWith("debug_")) {
+                setDebugUsers(debugUsers.filter(u => u.id !== tileId));
+              }
+            }
+          }}
+        />,
+        document.body
+      )}
     </>
   );
 }
@@ -2865,7 +2998,7 @@ function Msg({ msg, myUsername, onContextMenu, isFirst }: { msg: { id: number; f
 }
 
 
-function CallBtnWithDropdown({ icon, onClick, active, tooltip, colorMode = "default", dropdownItems }: { icon: React.ReactNode; onClick: () => void; active?: boolean; tooltip: string; colorMode?: "default" | "red" | "green"; dropdownItems: { label: string; onClick: () => void }[] }) {
+function CallBtnWithDropdown({ icon, onClick, active, tooltip, colorMode = "default", dropdownItems, openUpward = false }: { icon: React.ReactNode; onClick: () => void; active?: boolean; tooltip: string; colorMode?: "default" | "red" | "green"; dropdownItems: { label: string; onClick: () => void }[]; openUpward?: boolean }) {
   const [h, setH] = useState(false);
   const [hDrop, setHDrop] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -2891,6 +3024,11 @@ function CallBtnWithDropdown({ icon, onClick, active, tooltip, colorMode = "defa
   // Gap background - only visible when hovering or active
   const isHovering = h || hDrop;
   const gapBg = isHovering || isColored ? "transparent" : (isColored ? softColor : T.bg3);
+
+  // Dropdown positioning - opens upward in fullscreen
+  const dropdownStyle: React.CSSProperties = openUpward
+    ? { ...s.callDropdownMenu, top: "auto", bottom: "calc(100% + 6px)" }
+    : s.callDropdownMenu;
 
   return (
     <div style={{ position: "relative", display: "flex" }}>
@@ -2933,7 +3071,7 @@ function CallBtnWithDropdown({ icon, onClick, active, tooltip, colorMode = "defa
       {menuOpen && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setMenuOpen(false)} />
-          <div style={s.callDropdownMenu}>
+          <div style={dropdownStyle}>
             {dropdownItems.map((item, idx) => (
               <div
                 key={idx}
@@ -2983,6 +3121,7 @@ function VideoElement({ stream, muted = false, mirrored = false }: { stream: Med
         height: "100%",
         objectFit: "cover",
         transform: mirrored ? "scaleX(-1)" : "none",
+        pointerEvents: "none",
       }}
     />
   );
@@ -3028,6 +3167,7 @@ function MicrophoneButton({
   onStartMonitoring,
   onStopMonitoring,
   onRefreshDevices,
+  openUpward = false,
 }: {
   isMuted: boolean;
   onToggleMute: () => void;
@@ -3041,6 +3181,7 @@ function MicrophoneButton({
   onStartMonitoring: () => void;
   onStopMonitoring: () => void;
   onRefreshDevices: () => void;
+  openUpward?: boolean;
 }) {
   const [h, setH] = useState(false);
   const [hDrop, setHDrop] = useState(false);
@@ -3115,7 +3256,7 @@ function MicrophoneButton({
       {menuOpen && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setMenuOpen(false)} />
-          <div style={{ ...s.callDropdownMenu, minWidth: 280, padding: 12 }}>
+          <div style={{ ...s.callDropdownMenu, minWidth: 280, padding: 12, ...(openUpward ? { top: "auto", bottom: "calc(100% + 6px)" } : {}) }}>
             {/* Audio Level Tester */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -3284,7 +3425,7 @@ function GifPicker({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ContextMenu({ x, y, type, data: _data, onClose }: { x: number; y: number; type: string; data?: any; onClose: () => void }) {
+function ContextMenu({ x, y, type, data, onClose, onTileAction }: { x: number; y: number; type: string; data?: any; onClose: () => void; onTileAction?: (action: string, tileId: string) => void }) {
   const [hoveredItem, setHoveredItem] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -3292,7 +3433,12 @@ function ContextMenu({ x, y, type, data: _data, onClose }: { x: number; y: numbe
   const adjustedX = Math.min(x, window.innerWidth - 200);
   const adjustedY = Math.min(y, window.innerHeight - 300);
 
-  const menuItems = type === "message" ? [
+  const menuItems = type === "tile" ? [
+    { icon: <HiUserCircle size={14} />, label: "View Profile", action: () => {} },
+    { icon: <HiVolumeUp size={14} />, label: "Adjust Volume", action: () => {} },
+    { divider: true },
+    { icon: <ImPhoneHangUp size={14} />, label: `Disconnect ${data?.tileName || "User"}`, danger: true, action: () => onTileAction?.("disconnect", data?.tileId) },
+  ] : type === "message" ? [
     { icon: <HiReply size={14} />, label: "Reply", action: () => {} },
     { icon: <FaCopy size={13} />, label: "Copy Text", action: () => {} },
     { icon: <BsPinAngleFill size={13} />, label: "Pin Message", action: () => {} },
@@ -3316,22 +3462,38 @@ function ContextMenu({ x, y, type, data: _data, onClose }: { x: number; y: numbe
   ];
 
   return (
-    <div
-      ref={menuRef}
-      style={{
-        position: "fixed",
-        top: adjustedY,
-        left: adjustedX,
-        background: T.bg3,
-        border: `1px solid ${T.border}`,
-        borderRadius: 8,
-        padding: 4,
-        minWidth: 180,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
-        zIndex: 1000,
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
+    <>
+      {/* Click-away overlay to close menu */}
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+        }}
+        onClick={onClose}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+      />
+      <div
+        ref={menuRef}
+        style={{
+          position: "fixed",
+          top: adjustedY,
+          left: adjustedX,
+          background: T.bg3,
+          border: `1px solid ${T.border}`,
+          borderRadius: 8,
+          padding: 4,
+          minWidth: 180,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+          zIndex: 10000,
+          fontFamily: "'Outfit', sans-serif",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
       {menuItems.map((item, idx) =>
         item.divider ? (
           <div key={idx} style={{ height: 1, background: T.border, margin: "4px 8px" }} />
@@ -3360,6 +3522,7 @@ function ContextMenu({ x, y, type, data: _data, onClose }: { x: number; y: numbe
         )
       )}
     </div>
+    </>
   );
 }
 
@@ -3386,11 +3549,11 @@ const s = {
 
   callArea: { background: T.bg0, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column" as const },
   callGrid: { display: "flex", gap: 8, padding: "12px", justifyContent: "center", alignItems: "center" },
-  callTile: { width: "calc(50% - 4px)", maxWidth: 480, aspectRatio: "16/9", borderRadius: 12, background: T.bg2, position: "relative" as const, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  tileName: { position: "absolute" as const, bottom: 8, left: 10, fontSize: 11, fontWeight: 600, color: T.textSoft, background: "rgba(0,0,0,0.5)", padding: "3px 8px", borderRadius: 4 },
+  callTile: { width: "calc(50% - 4px)", maxWidth: 480, aspectRatio: "16/9", borderRadius: 12, background: T.bg2, position: "relative" as const, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" } as React.CSSProperties,
+  tileName: { position: "absolute" as const, bottom: 8, left: 10, fontSize: 11, fontWeight: 600, color: T.textSoft, background: "rgba(0,0,0,0.5)", padding: "3px 8px", borderRadius: 4, pointerEvents: "none" as const },
   videoPlaceholder: { display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", color: T.textSoft },
-  voicePlaceholder: { display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", color: T.text },
-  screenSharePlaceholder: { display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", color: T.textSoft, background: `repeating-linear-gradient(45deg, ${T.bg2}, ${T.bg2} 10px, ${T.bg3} 10px, ${T.bg3} 20px)`, width: "100%", height: "100%" },
+  voicePlaceholder: { display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", color: T.text, pointerEvents: "none" as const },
+  screenSharePlaceholder: { display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", color: T.textSoft, background: `repeating-linear-gradient(45deg, ${T.bg2}, ${T.bg2} 10px, ${T.bg3} 10px, ${T.bg3} 20px)`, width: "100%", height: "100%", pointerEvents: "none" as const },
   avatarXl: { width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 24, color: "#fff" },
   callControlsWrapper: { position: "relative" as const, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px" },
   callControls: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8 },
