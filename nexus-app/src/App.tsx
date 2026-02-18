@@ -1539,15 +1539,16 @@ export default function App() {
                         ...s.callTile,
                         ...(isFullscreen ? {
                           flex: "none",
-                          width: "calc(33% - 12px)",
-                          maxWidth: "calc((50vh - 50px) * 16 / 9)",
+                          width: (myScreen || friendHasScreen) ? "calc(50% - 12px)" : "calc(50% - 12px)",
+                          maxWidth: "calc((70vh - 100px) * 16 / 9)",
                           height: "auto",
                           aspectRatio: "16/9"
-                        } : { width: 140, height: 100 })
+                        } : {}),
+                        order: 99
                       }}>
                         <div style={s.voicePlaceholder}>
-                          <BsSpotify size={36} color="#1DB954" />
-                          <div style={{ fontSize: 13, fontWeight: 500, marginTop: 8, color: "#1DB954" }}>Spotify</div>
+                          <BsSpotify size={48} color="#1DB954" />
+                          <div style={{ fontSize: 13, fontWeight: 500, marginTop: 8 }}>Spotify</div>
                         </div>
                         <div style={s.tileName}>Spotify</div>
                       </div>
