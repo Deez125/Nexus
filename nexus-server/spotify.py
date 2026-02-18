@@ -395,7 +395,8 @@ async def get_artist_albums(artist_id: str):
     if "access_token" not in tokens:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    url = f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums"
+    # Request albums, singles, and compilations explicitly
+    url = f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums?include_groups=album,single,compilation"
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
     async with httpx.AsyncClient() as client:
