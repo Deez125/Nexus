@@ -395,17 +395,30 @@ async def get_artist_albums(artist_id: str):
     if "access_token" not in tokens:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+    url = f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums"
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
     async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums?limit=50",
-            headers={"Authorization": f"Bearer {tokens['access_token']}"}
-        )
+        # Make multiple requests to get more albums
+        all_items = []
+        response = await client.get(url, headers=headers)
 
         if response.status_code != 200:
             print(f"Spotify albums error: {response.status_code} - {response.text}")
             raise HTTPException(status_code=response.status_code, detail=f"Failed to get artist albums: {response.text}")
 
-        return response.json()
+        data = response.json()
+        all_items.extend(data.get("items", []))
+
+        # Get next page if available
+        next_url = data.get("next")
+        if next_url:
+            response2 = await client.get(next_url, headers=headers)
+            if response2.status_code == 200:
+                data2 = response2.json()
+                all_items.extend(data2.get("items", []))
+
+        return {"items": all_items}
 
 
 @router.get("/album/{album_id}")
