@@ -2193,7 +2193,7 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
       {/* Tabs */}
       <div style={{ display: "flex", borderBottom: `1px solid ${T.border}` }}>
         {[
-          { id: "playing" as const, icon: <BsSpotify size={14} />, label: "Now Playing" },
+          { id: "playing" as const, icon: null, label: "Now Playing" },
           { id: "playlists" as const, icon: <BsMusicNoteList size={14} />, label: "Playlists" },
           { id: "search" as const, icon: <BsSearch size={14} />, label: "Search" },
         ].map((tab) => (
@@ -2565,7 +2565,7 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
                 {!artistView.image && <BsPersonFill size={40} color={T.textMuted} />}
               </div>
               <div style={{ fontSize: 18, fontWeight: 700, color: T.text, marginBottom: 4 }}>{artistView.name}</div>
-              <div style={{ fontSize: 12, color: T.textMuted }}>{artistView.followers.toLocaleString()} followers</div>
+              <div style={{ fontSize: 12, color: T.textMuted }}>{artistView.followers > 0 ? `${artistView.followers.toLocaleString()} followers` : "Artist"}</div>
             </div>
 
             {/* Albums & Singles */}
