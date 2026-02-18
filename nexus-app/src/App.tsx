@@ -63,10 +63,8 @@ function modifySdpForAudioQuality(sdp: string): string {
 }
 
 // ─── WebSocket Hook ───────────────────────────────────────────────────────────
-// WebSocket URL: localhost -> local server, production -> production server
-const WS_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-  ? "ws://localhost:8765/ws"
-  : "wss://nexus-api.pulpfliction.com/ws";
+// Always connect to production backend
+const WS_URL = "wss://nexus-api.pulpfliction.com/ws";
 
 interface Message {
   id: number;
@@ -1802,7 +1800,8 @@ function SpotifyControlBtn({ children, onClick, size = 32, active = false }: { c
 }
 
 // Spotify API base URL - uses relative path which will be proxied in dev or direct in prod
-const SPOTIFY_API = window.location.hostname === "localhost" ? "http://localhost:8765/api/spotify" : "https://nexus-api.pulpfliction.com/api/spotify";
+// Always use production API
+const SPOTIFY_API = "https://nexus-api.pulpfliction.com/api/spotify";
 
 function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }: { isConnected: boolean; onConnect: () => void; onDisconnect: () => void }) {
   const [activeTab, setActiveTab] = useState<"playing" | "playlists" | "search" | "artist" | "album">("playing");
