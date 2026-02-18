@@ -2564,17 +2564,16 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
               <div style={{ width: 100, height: 100, borderRadius: "50%", margin: "0 auto 12px", background: artistView.image ? `url(${artistView.image}) center/cover` : T.bg3, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {!artistView.image && <BsPersonFill size={40} color={T.textMuted} />}
               </div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: T.text, marginBottom: 4 }}>{artistView.name}</div>
-              <div style={{ fontSize: 12, color: T.textMuted }}>{artistView.followers > 0 ? `${artistView.followers.toLocaleString()} followers` : "Artist"}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.text }}>{artistView.name}</div>
             </div>
 
             {/* Albums & Singles */}
             <div style={{ padding: "0 8px 16px" }}>
               {/* Albums */}
-              {artistView.albums.filter(a => a.type === "album").length > 0 && (
+              {artistView.albums.filter(a => a.type === "album" || a.type === "compilation").length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, padding: "0 8px", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Albums</div>
-                  {artistView.albums.filter(a => a.type === "album").map((album) => (
+                  {artistView.albums.filter(a => a.type === "album" || a.type === "compilation").map((album) => (
                     <div
                       key={album.id}
                       style={{
