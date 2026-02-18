@@ -438,3 +438,86 @@ async def get_album(album_id: str):
             raise HTTPException(status_code=response.status_code, detail="Failed to get album")
 
         return response.json()
+
+
+# =============================================================================
+# Spotify Bot Endpoints - Control the bot that joins calls to stream music
+# =============================================================================
+
+@router.post("/bot/start")
+async def start_bot():
+    """Start the Spotify bot"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+    success = await bot.start()
+
+    if success:
+        return {"status": "started", "message": "Spotify bot started successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to start bot")
+
+
+@router.post("/bot/stop")
+async def stop_bot():
+    """Stop the Spotify bot"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+    await bot.stop()
+
+    return {"status": "stopped", "message": "Spotify bot stopped"}
+
+
+@router.post("/bot/join")
+async def bot_join_call():
+    """Make the bot join the voice call"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+
+    if not bot.state.is_running:
+        # Auto-start if not running
+        success = await bot.start()
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to start bot")
+
+    success = await bot.join_call()
+
+    if success:
+        return {"status": "joined", "message": "Bot joined the call"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to join call")
+
+
+@router.post("/bot/leave")
+async def bot_leave_call():
+    """Make the bot leave the voice call"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+    await bot.leave_call()
+
+    return {"status": "left", "message": "Bot left the call"}
+
+
+@router.get("/bot/status")
+async def get_bot_status():
+    """Get the current bot status"""
+    from spotify_bot import get_bot, spotify_bot
+
+    if spotify_bot is None:
+        return {
+            "is_running": False,
+            "is_in_call": False,
+            "is_playing": False,
+            "current_track": None
+        }
+
+    bot = await get_bot()
+    return {
+        "is_running": bot.state.is_running,
+        "is_in_call": bot.state.is_in_call,
+        "is_playing": bot.state.is_playing,
+        "current_track": bot.state.current_track
+    }

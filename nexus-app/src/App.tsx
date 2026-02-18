@@ -1797,6 +1797,8 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
   const [artistView, setArtistView] = useState<{ id: string; name: string; image: string; followers: number; albums: { id: string; name: string; image: string; uri: string; releaseDate: string; type: string }[] } | null>(null);
   const [albumView, setAlbumView] = useState<{ id: string; name: string; image: string; artist: string; artistId: string; uri: string; releaseDate: string; tracks: { id: string; name: string; uri: string; duration: number; trackNumber: number }[] } | null>(null);
   const [previousTab, setPreviousTab] = useState<"playing" | "playlists" | "search">("search");
+  const [botInCall, setBotInCall] = useState(false);
+  const [botLoading, setBotLoading] = useState(false);
 
   // Format time helper
   const formatTime = (ms: number) => {
@@ -2322,6 +2324,49 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
                 <div style={{ width: `${volume}%`, height: "100%", background: T.textSoft, borderRadius: 2 }} />
               </div>
             </div>
+
+            {/* Stream to Call Button */}
+            <button
+              onClick={async () => {
+                try {
+                  setBotLoading(true);
+                  if (botInCall) {
+                    await fetch(`${SPOTIFY_API}/bot/leave`, { method: "POST" });
+                    setBotInCall(false);
+                  } else {
+                    const res = await fetch(`${SPOTIFY_API}/bot/join`, { method: "POST" });
+                    if (res.ok) {
+                      setBotInCall(true);
+                    }
+                  }
+                } catch (e) {
+                  console.error("Bot error:", e);
+                }
+                setBotLoading(false);
+              }}
+              disabled={botLoading}
+              style={{
+                width: "100%",
+                marginTop: 12,
+                padding: "10px",
+                background: botInCall ? T.bg3 : "#1DB954",
+                border: "none",
+                borderRadius: 20,
+                color: botInCall ? T.text : "#000",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: botLoading ? "wait" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                fontFamily: T.font,
+                opacity: botLoading ? 0.6 : 1,
+              }}
+            >
+              <IoCall size={16} />
+              {botLoading ? "..." : botInCall ? "Leave Call" : "Stream to Call"}
+            </button>
           </div>
         )}
 
