@@ -1169,6 +1169,9 @@ export default function App() {
   const friendHasVideo = friendInCall?.has_video || false;
   const friendHasScreen = friendInCall?.has_screen || false;
 
+  // Find if Spotify bot is in the call
+  const spotifyBotInCall = users.find(u => u.username === "Spotify" && u.in_call);
+
   // Debug: log when users state changes
   useEffect(() => {
     console.log("[Nexus] Users state updated:", users.map(u => ({ username: u.username, client_id: u.client_id.slice(0, 12), in_call: u.in_call })));
@@ -1527,6 +1530,26 @@ export default function App() {
                           <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>1440p · 60fps</div>
                         </div>
                         <div style={s.tileName}>{friend.name}'s Screen</div>
+                      </div>
+                    )}
+
+                    {/* Spotify bot tile - shows when bot is in call */}
+                    {spotifyBotInCall && (
+                      <div style={{
+                        ...s.callTile,
+                        ...(isFullscreen ? {
+                          flex: "none",
+                          width: "calc(33% - 12px)",
+                          maxWidth: "calc((50vh - 50px) * 16 / 9)",
+                          height: "auto",
+                          aspectRatio: "16/9"
+                        } : { width: 140, height: 100 })
+                      }}>
+                        <div style={s.voicePlaceholder}>
+                          <BsSpotify size={36} color="#1DB954" />
+                          <div style={{ fontSize: 13, fontWeight: 500, marginTop: 8, color: "#1DB954" }}>Spotify</div>
+                        </div>
+                        <div style={s.tileName}>Spotify</div>
                       </div>
                     )}
 
