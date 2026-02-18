@@ -1172,6 +1172,40 @@ export default function App() {
   // Find if Spotify bot is in the call
   const spotifyBotInCall = users.find(u => u.username === "Spotify" && u.in_call);
 
+  // Count total participants in call for grid layout (me + friend + spotify bot + waiting placeholder)
+  const participantCount = 1 + (friendInCall ? 1 : 1) + (spotifyBotInCall ? 1 : 0); // Always count at least 2 (me + friend/waiting)
+
+  // Calculate grid layout based on participant count
+  const getGridLayout = (count: number, isFs: boolean) => {
+    if (!isFs) return {}; // Non-fullscreen uses default flex layout
+
+    if (count <= 2) {
+      // 1x2 side by side
+      return {
+        gridTemplateColumns: "repeat(2, 1fr)",
+        gridTemplateRows: "1fr",
+      };
+    } else if (count <= 4) {
+      // 2x2 grid
+      return {
+        gridTemplateColumns: "repeat(2, 1fr)",
+        gridTemplateRows: "repeat(2, 1fr)",
+      };
+    } else if (count <= 6) {
+      // 3x2 grid
+      return {
+        gridTemplateColumns: "repeat(3, 1fr)",
+        gridTemplateRows: "repeat(2, 1fr)",
+      };
+    } else {
+      // 4x3 or larger
+      return {
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gridTemplateRows: "repeat(3, 1fr)",
+      };
+    }
+  };
+
   // Debug: log when users state changes
   useEffect(() => {
     console.log("[Nexus] Users state updated:", users.map(u => ({ username: u.username, client_id: u.client_id.slice(0, 12), in_call: u.in_call })));
@@ -1456,23 +1490,25 @@ export default function App() {
                   <div style={{
                     ...s.callGrid,
                     ...(isFullscreen ? {
+                      display: "grid",
+                      ...getGridLayout(participantCount, true),
                       flex: 1,
-                      alignItems: "center",
-                      justifyContent: "center",
                       padding: "40px 60px",
-                      flexWrap: myScreen ? "wrap" : "nowrap",
-                      gap: myScreen ? 16 : 8
+                      gap: 16,
+                      maxHeight: "calc(100vh - 160px)",
+                      width: "100%",
+                      maxWidth: participantCount <= 2 ? "1200px" : participantCount <= 4 ? "1000px" : "1200px",
+                      margin: "0 auto",
                     } : {})
                   }}>
                     {/* My tile - camera or avatar */}
                     <div style={{
                       ...s.callTile,
                       ...(isFullscreen ? {
-                        flex: "none",
-                        width: myScreen ? "calc(50% - 12px)" : "calc(50% - 12px)",
-                        maxWidth: "calc((70vh - 100px) * 16 / 9)",
-                        height: "auto",
-                        aspectRatio: "16/9"
+                        width: "100%",
+                        height: "100%",
+                        maxHeight: "100%",
+                        aspectRatio: "16/9",
                       } : {}),
                       ...(!isFullscreen && myScreen ? { order: 2 } : {})
                     }}>
@@ -1492,11 +1528,10 @@ export default function App() {
                       <div style={{
                         ...s.callTile,
                         ...(isFullscreen ? {
-                          flex: "none",
-                          width: (myScreen || friendHasScreen) ? "calc(50% - 12px)" : "calc(50% - 12px)",
-                          maxWidth: "calc((70vh - 100px) * 16 / 9)",
-                          height: "auto",
-                          aspectRatio: "16/9"
+                          width: "100%",
+                          height: "100%",
+                          maxHeight: "100%",
+                          aspectRatio: "16/9",
                         } : {}),
                         ...(!isFullscreen && (myScreen || friendHasScreen) ? { order: 3 } : {})
                       }}>
@@ -1517,11 +1552,10 @@ export default function App() {
                       <div style={{
                         ...s.callTile,
                         ...(isFullscreen ? {
-                          flex: "none",
                           width: "100%",
-                          maxWidth: "calc((50vh - 50px) * 16 / 9)",
-                          height: "auto",
-                          aspectRatio: "16/9"
+                          height: "100%",
+                          maxHeight: "100%",
+                          aspectRatio: "16/9",
                         } : { order: 1 })
                       }}>
                         <div style={s.screenSharePlaceholder}>
@@ -1538,11 +1572,10 @@ export default function App() {
                       <div style={{
                         ...s.callTile,
                         ...(isFullscreen ? {
-                          flex: "none",
-                          width: (myScreen || friendHasScreen) ? "calc(50% - 12px)" : "calc(50% - 12px)",
-                          maxWidth: "calc((70vh - 100px) * 16 / 9)",
-                          height: "auto",
-                          aspectRatio: "16/9"
+                          width: "100%",
+                          height: "100%",
+                          maxHeight: "100%",
+                          aspectRatio: "16/9",
                         } : {}),
                         order: 99
                       }}>
@@ -1559,11 +1592,10 @@ export default function App() {
                       <div style={{
                         ...s.callTile,
                         ...(isFullscreen ? {
-                          flex: "none",
-                          width: myScreen ? "calc(50% - 12px)" : "calc(50% - 12px)",
-                          maxWidth: "calc((70vh - 100px) * 16 / 9)",
-                          height: "auto",
-                          aspectRatio: "16/9"
+                          width: "100%",
+                          height: "100%",
+                          maxHeight: "100%",
+                          aspectRatio: "16/9",
                         } : {}),
                         ...(!isFullscreen && myScreen ? { order: 3 } : {}),
                         background: T.bg3,
