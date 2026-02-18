@@ -397,7 +397,7 @@ async def get_artist_albums(artist_id: str):
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums?limit=20",
+            f"{SPOTIFY_API_BASE}/artists/{artist_id}/albums",
             headers={"Authorization": f"Bearer {tokens['access_token']}"}
         )
 
