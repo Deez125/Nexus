@@ -681,12 +681,34 @@ class SpotifyBot:
 
         pc = self.state.peer_connections.get(from_id)
         if pc and candidate_data.get("candidate"):
-            candidate = RTCIceCandidate(
-                sdpMid=candidate_data.get("sdpMid"),
-                sdpMLineIndex=candidate_data.get("sdpMLineIndex"),
-                candidate=candidate_data.get("candidate")
-            )
-            await pc.addIceCandidate(candidate)
+            try:
+                # Parse the candidate string into aiortc RTCIceCandidate
+                # The candidate string format is: "candidate:foundation component protocol priority ip port typ type ..."
+                candidate_str = candidate_data.get("candidate")
+                sdp_mid = candidate_data.get("sdpMid")
+                sdp_mline_index = candidate_data.get("sdpMLineIndex")
+
+                # Use aioice to parse the candidate string
+                from aioice import Candidate
+                parsed = Candidate.from_sdp(candidate_str)
+
+                candidate = RTCIceCandidate(
+                    component=parsed.component,
+                    foundation=parsed.foundation,
+                    ip=parsed.host,
+                    port=parsed.port,
+                    priority=parsed.priority,
+                    protocol=parsed.transport,
+                    type=parsed.type,
+                    relatedAddress=parsed.related_address,
+                    relatedPort=parsed.related_port,
+                    sdpMid=sdp_mid,
+                    sdpMLineIndex=sdp_mline_index,
+                    tcpType=parsed.tcptype,
+                )
+                await pc.addIceCandidate(candidate)
+            except Exception as e:
+                self.log(f"Failed to parse ICE candidate: {e}")
 
     async def _create_peer_connection(self, peer_id: str, create_offer: bool = False) -> RTCPeerConnection:
         """Create a new peer connection to a peer"""
