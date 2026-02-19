@@ -6,7 +6,8 @@ import asyncio
 import subprocess
 import numpy as np
 import threading
-from typing import Optional, List
+import queue
+from typing import Optional
 from aiortc import MediaStreamTrack
 from av import AudioFrame
 import fractions
@@ -14,11 +15,8 @@ import fractions
 
 class PulseAudioCapture:
     """
-    Captures audio from PulseAudio's monitor source using parec
-    This allows us to capture the audio output from Chromium.
-
-    Audio is captured in a background thread and buffered so multiple
-    tracks can read from the same source.
+    Captures audio from PulseAudio's monitor source using parec.
+    Uses a ring buffer to ensure smooth audio delivery to multiple tracks.
     """
 
     def __init__(self, source: str = "browser_audio.monitor", sample_rate: int = 48000, channels: int = 2):
@@ -27,26 +25,35 @@ class PulseAudioCapture:
         self.channels = channels
         self.process: Optional[subprocess.Popen] = None
         self._running = False
-        self._lock = threading.Lock()
-        self._current_frame: Optional[np.ndarray] = None
-        self._frame_count = 0
         self._capture_thread: Optional[threading.Thread] = None
         self._samples_per_frame = 960  # 20ms at 48kHz
+
+        # Ring buffer for audio frames (hold ~1 second of audio)
+        self._buffer_size = 50  # 50 frames = 1 second
+        self._ring_buffer = []
+        self._write_index = 0
+        self._lock = threading.Lock()
+        self._frame_count = 0
 
     def start(self):
         """Start capturing audio from PulseAudio"""
         if self._running:
             return
 
+        # Initialize ring buffer with silence
+        silence = np.zeros((self._samples_per_frame, self.channels), dtype=np.int16)
+        self._ring_buffer = [silence.copy() for _ in range(self._buffer_size)]
+        self._write_index = 0
+        self._frame_count = 0
+
         # Use parec to capture from the monitor source
-        # Output format: signed 16-bit little-endian PCM
         cmd = [
             "parec",
             "--device", self.source,
             "--rate", str(self.sample_rate),
             "--channels", str(self.channels),
             "--format", "s16le",
-            "--latency-msec", "20"
+            "--latency-msec", "10"  # Lower latency for better sync
         ]
 
         self.process = subprocess.Popen(
@@ -64,23 +71,32 @@ class PulseAudioCapture:
         print(f"[AudioCapture] Started capturing from {self.source}")
 
     def _capture_loop(self):
-        """Background thread that continuously captures audio frames"""
-        bytes_needed = self._samples_per_frame * self.channels * 2
-        log_interval = 500  # Log audio stats every 500 frames (~10 seconds)
+        """Background thread that continuously captures audio frames into ring buffer"""
+        bytes_per_frame = self._samples_per_frame * self.channels * 2
+        log_interval = 500  # Log every ~10 seconds
 
         while self._running and self.process:
             try:
-                data = self.process.stdout.read(bytes_needed)
-                if len(data) < bytes_needed:
-                    # Pad with silence if we don't have enough data
-                    data = data + b'\x00' * (bytes_needed - len(data))
+                # Read exactly one frame worth of data
+                data = b''
+                while len(data) < bytes_per_frame and self._running:
+                    chunk = self.process.stdout.read(bytes_per_frame - len(data))
+                    if not chunk:
+                        break
+                    data += chunk
+
+                if len(data) < bytes_per_frame:
+                    # Pad with silence if needed
+                    data = data + b'\x00' * (bytes_per_frame - len(data))
 
                 # Convert to numpy array
-                audio = np.frombuffer(data, dtype=np.int16)
+                audio = np.frombuffer(data, dtype=np.int16).copy()
                 audio = audio.reshape(-1, self.channels)
 
                 with self._lock:
-                    self._current_frame = audio
+                    # Write to ring buffer
+                    self._ring_buffer[self._write_index] = audio
+                    self._write_index = (self._write_index + 1) % self._buffer_size
                     self._frame_count += 1
 
                     # Log audio stats periodically
@@ -108,29 +124,16 @@ class PulseAudioCapture:
             self._capture_thread = None
         print("[AudioCapture] Stopped")
 
-    def get_current_frame(self) -> tuple[Optional[np.ndarray], int]:
-        """
-        Get the current audio frame and its sequence number.
-        Multiple tracks can call this to get the same frame.
-
-        Returns:
-            (frame, frame_count) tuple
-        """
+    def get_frame_at_index(self, index: int) -> np.ndarray:
+        """Get frame from ring buffer at specific index"""
         with self._lock:
-            return self._current_frame, self._frame_count
+            buffer_index = index % self._buffer_size
+            return self._ring_buffer[buffer_index].copy()
 
-    def read_frame(self, samples: int = 960) -> Optional[np.ndarray]:
-        """
-        Read a frame of audio samples (legacy method, kept for compatibility)
-
-        Args:
-            samples: Number of samples to read (960 = 20ms at 48kHz)
-
-        Returns:
-            numpy array of shape (samples, channels) with int16 values
-        """
-        frame, _ = self.get_current_frame()
-        return frame
+    def get_current_frame_count(self) -> int:
+        """Get the current frame count"""
+        with self._lock:
+            return self._frame_count
 
     @property
     def is_running(self) -> bool:
@@ -142,7 +145,8 @@ class SpotifyAudioTrack(MediaStreamTrack):
     Custom AudioStreamTrack that reads from PulseAudio capture
     and streams it via WebRTC.
 
-    Multiple instances can share the same PulseAudioCapture source.
+    Each track instance maintains its own read position to ensure
+    continuous audio without drops or duplicates.
     """
 
     kind = "audio"
@@ -155,38 +159,43 @@ class SpotifyAudioTrack(MediaStreamTrack):
         self._samples_per_frame = 960  # 20ms at 48kHz
         self._timestamp = 0
         self._start_time = None
-        self._last_frame_count = -1
+        self._next_frame_index = None  # Track which frame to read next
+        self._frame_interval = 0.02  # 20ms per frame
 
     async def recv(self) -> AudioFrame:
         """
-        Called by aiortc to get the next audio frame
-        This is called roughly every 20ms
+        Called by aiortc to get the next audio frame.
+        Maintains proper timing and continuous frame delivery.
         """
         if self._start_time is None:
             self._start_time = asyncio.get_event_loop().time()
+            # Start from current capture position
+            self._next_frame_index = self.capture.get_current_frame_count()
 
-        # Calculate expected timestamp for pacing
-        elapsed = asyncio.get_event_loop().time() - self._start_time
-        expected_samples = int(elapsed * self._sample_rate)
+        # Calculate when this frame should be delivered
+        frame_number = self._timestamp // self._samples_per_frame
+        target_time = self._start_time + (frame_number * self._frame_interval)
+        current_time = asyncio.get_event_loop().time()
 
         # Wait if we're ahead of schedule
-        samples_ahead = self._timestamp - expected_samples
-        if samples_ahead > self._samples_per_frame:
-            await asyncio.sleep(samples_ahead / self._sample_rate)
+        if current_time < target_time:
+            await asyncio.sleep(target_time - current_time)
 
-        # Get current audio frame from shared capture
-        audio_data, frame_count = self.capture.get_current_frame()
+        # Get the next frame from capture
+        current_capture_frame = self.capture.get_current_frame_count()
 
-        # If no new frame, wait a bit and try again
-        if frame_count == self._last_frame_count or audio_data is None:
-            await asyncio.sleep(0.005)  # 5ms
-            audio_data, frame_count = self.capture.get_current_frame()
+        # If capture has fallen behind, skip ahead
+        if self._next_frame_index < current_capture_frame - self.capture._buffer_size + 5:
+            self._next_frame_index = current_capture_frame - 5  # Stay 5 frames behind current
 
-        self._last_frame_count = frame_count
+        # If we're ahead of capture, wait for more data
+        while self._next_frame_index >= current_capture_frame:
+            await asyncio.sleep(0.005)
+            current_capture_frame = self.capture.get_current_frame_count()
 
-        if audio_data is None:
-            # Generate silence if no data
-            audio_data = np.zeros((self._samples_per_frame, self._channels), dtype=np.int16)
+        # Get audio data
+        audio_data = self.capture.get_frame_at_index(self._next_frame_index)
+        self._next_frame_index += 1
 
         # Create AudioFrame
         frame = AudioFrame(format='s16', layout='stereo', samples=self._samples_per_frame)
@@ -194,8 +203,7 @@ class SpotifyAudioTrack(MediaStreamTrack):
         frame.pts = self._timestamp
         frame.time_base = fractions.Fraction(1, self._sample_rate)
 
-        # Copy audio data to frame
-        # aiortc expects interleaved audio data
+        # Copy audio data to frame (interleaved stereo)
         frame.planes[0].update(audio_data.tobytes())
 
         # Increment timestamp
