@@ -2,6 +2,10 @@ FROM python:3.11-slim
 
 # Install system dependencies for Playwright, aiortc, and PulseAudio
 RUN apt-get update && apt-get install -y \
+    # Basic tools
+    wget \
+    gnupg \
+    ca-certificates \
     # Playwright dependencies
     libnss3 \
     libnspr4 \
@@ -36,14 +40,21 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Google Chrome (includes Widevine DRM for Spotify playback)
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor > /usr/share/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers
-RUN playwright install chromium
+# Skip Playwright browser install - we use system-installed Google Chrome for Widevine DRM
+# Just install dependencies for the browser
 RUN playwright install-deps chromium
 
 # Copy application code

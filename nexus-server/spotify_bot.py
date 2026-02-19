@@ -96,13 +96,14 @@ class SpotifyBot:
 
         try:
             # Launch headless browser with Playwright
-            self.log("Launching headless browser...")
+            self.log("Launching headless browser with Chrome (Widevine DRM support)...")
             self._playwright = await async_playwright().start()
 
-            # Launch Chromium with audio enabled
-            # Key: Route audio to PulseAudio instead of null
+            # Launch Google Chrome (not Chromium) for Widevine DRM support
+            # Chrome is installed at /usr/bin/google-chrome-stable
             self.state.browser = await self._playwright.chromium.launch(
                 headless=True,
+                executable_path='/usr/bin/google-chrome-stable',
                 args=[
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -112,13 +113,15 @@ class SpotifyBot:
                     # Audio settings - use PulseAudio
                     '--use-fake-ui-for-media-stream',
                     '--alsa-output-device=pulse',
+                    # Enable DRM/Widevine
+                    '--enable-features=Widevine',
                 ]
             )
 
             # Create browser context with permissions
             self.state.context = await self.state.browser.new_context(
                 viewport={'width': 1280, 'height': 720},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
 
             self.state.page = await self.state.context.new_page()
