@@ -7,15 +7,32 @@ import os
 import json
 import asyncio
 from typing import Optional, Dict, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import aiohttp
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, MediaStreamTrack
-from aiortc.contrib.media import MediaPlayer, MediaBlackhole
-from playwright.async_api import async_playwright, Browser, Page
+from aiortc import RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, MediaStreamTrack, RTCConfiguration, RTCIceServer
+from playwright.async_api import async_playwright, Browser, Page, BrowserContext
+
+from audio_capture import PulseAudioCapture, SpotifyAudioTrack, SilentAudioTrack
 
 # Bot configuration
 BOT_CLIENT_ID = "spotify_bot"
 BOT_USERNAME = "Spotify"
+
+# ICE servers (same as frontend)
+ICE_SERVERS = [
+    RTCIceServer(urls=["stun:stun.l.google.com:19302"]),
+    RTCIceServer(urls=["stun:stun1.l.google.com:19302"]),
+    RTCIceServer(
+        urls=["turn:openrelay.metered.ca:80"],
+        username="openrelayproject",
+        credential="openrelayproject"
+    ),
+    RTCIceServer(
+        urls=["turn:openrelay.metered.ca:443"],
+        username="openrelayproject",
+        credential="openrelayproject"
+    ),
+]
 
 
 @dataclass
@@ -24,15 +41,16 @@ class BotState:
     is_running: bool = False
     is_in_call: bool = False
     is_playing: bool = False
+    is_logged_in: bool = False
     current_track: Optional[str] = None
     browser: Optional[Browser] = None
+    context: Optional[BrowserContext] = None
     page: Optional[Page] = None
     ws: Optional[aiohttp.ClientWebSocketResponse] = None
-    peer_connections: Dict[str, RTCPeerConnection] = None
-
-    def __post_init__(self):
-        if self.peer_connections is None:
-            self.peer_connections = {}
+    ws_session: Optional[aiohttp.ClientSession] = None
+    peer_connections: Dict[str, RTCPeerConnection] = field(default_factory=dict)
+    audio_capture: Optional[PulseAudioCapture] = None
+    audio_track: Optional[MediaStreamTrack] = None
 
 
 class SpotifyBot:
@@ -59,6 +77,7 @@ class SpotifyBot:
             "answer": self._on_answer,
             "ice_candidate": self._on_ice_candidate,
         }
+        self._playwright = None
 
     def log(self, message: str):
         """Log a message"""
@@ -77,28 +96,35 @@ class SpotifyBot:
         try:
             # Launch headless browser with Playwright
             self.log("Launching headless browser...")
-            playwright = await async_playwright().start()
+            self._playwright = await async_playwright().start()
 
             # Launch Chromium with audio enabled
-            self.state.browser = await playwright.chromium.launch(
+            # Key: Route audio to PulseAudio instead of null
+            self.state.browser = await self._playwright.chromium.launch(
                 headless=True,
                 args=[
-                    '--use-fake-ui-for-media-stream',  # Auto-allow media
-                    '--use-fake-device-for-media-stream',  # Use fake devices
-                    '--autoplay-policy=no-user-gesture-required',  # Allow autoplay
-                    '--disable-web-security',
                     '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--autoplay-policy=no-user-gesture-required',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    # Audio settings - use PulseAudio
+                    '--use-fake-ui-for-media-stream',
+                    '--alsa-output-device=pulse',
                 ]
             )
 
             # Create browser context with permissions
-            context = await self.state.browser.new_context(
-                permissions=['microphone', 'camera'],
-                viewport={'width': 1280, 'height': 720}
+            self.state.context = await self.state.browser.new_context(
+                viewport={'width': 1280, 'height': 720},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
 
-            self.state.page = await context.new_page()
+            self.state.page = await self.state.context.new_page()
             self.log("Browser launched successfully")
+
+            # Initialize audio capture
+            self.state.audio_capture = PulseAudioCapture()
 
             # Connect to WebSocket server
             await self._connect_websocket()
@@ -109,6 +135,8 @@ class SpotifyBot:
 
         except Exception as e:
             self.log(f"Failed to start bot: {str(e)}")
+            import traceback
+            traceback.print_exc()
             await self.stop()
             return False
 
@@ -120,6 +148,11 @@ class SpotifyBot:
         if self.state.is_in_call:
             await self.leave_call()
 
+        # Stop audio capture
+        if self.state.audio_capture:
+            self.state.audio_capture.stop()
+            self.state.audio_capture = None
+
         # Close all peer connections
         for pc in self.state.peer_connections.values():
             await pc.close()
@@ -129,15 +162,27 @@ class SpotifyBot:
         if self.state.ws:
             await self.state.ws.close()
             self.state.ws = None
+        if self.state.ws_session:
+            await self.state.ws_session.close()
+            self.state.ws_session = None
 
         # Close browser
+        if self.state.context:
+            await self.state.context.close()
+            self.state.context = None
         if self.state.browser:
             await self.state.browser.close()
             self.state.browser = None
-            self.state.page = None
+        self.state.page = None
+
+        # Close playwright
+        if self._playwright:
+            await self._playwright.stop()
+            self._playwright = None
 
         self.state.is_running = False
         self.state.is_in_call = False
+        self.state.is_logged_in = False
         self.log("Spotify Bot stopped")
 
     async def _connect_websocket(self):
@@ -145,8 +190,8 @@ class SpotifyBot:
         ws_url = f"{self.server_url}/ws/{BOT_CLIENT_ID}"
         self.log(f"Connecting to {ws_url}...")
 
-        session = aiohttp.ClientSession()
-        self.state.ws = await session.ws_connect(ws_url)
+        self.state.ws_session = aiohttp.ClientSession()
+        self.state.ws = await self.state.ws_session.ws_connect(ws_url)
 
         # Set username
         await self._send({
@@ -170,8 +215,6 @@ class SpotifyBot:
                     handler = self._message_handlers.get(msg_type)
                     if handler:
                         await handler(data)
-                    else:
-                        self.log(f"Unhandled message type: {msg_type}")
 
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     self.log(f"WebSocket error: {msg.data}")
@@ -179,10 +222,12 @@ class SpotifyBot:
 
         except Exception as e:
             self.log(f"Message loop error: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     async def _send(self, data: dict):
         """Send a message via WebSocket"""
-        if self.state.ws:
+        if self.state.ws and not self.state.ws.closed:
             await self.state.ws.send_str(json.dumps(data))
 
     async def join_call(self):
@@ -196,6 +241,16 @@ class SpotifyBot:
             return True
 
         self.log("Joining call...")
+
+        # Start audio capture from PulseAudio
+        if self.state.audio_capture:
+            self.state.audio_capture.start()
+            self.state.audio_track = SpotifyAudioTrack(self.state.audio_capture)
+            self.log("Audio capture started")
+        else:
+            # Fallback to silent track
+            self.state.audio_track = SilentAudioTrack()
+            self.log("Using silent audio track (capture not available)")
 
         await self._send({
             "type": "call_join"
@@ -224,6 +279,15 @@ class SpotifyBot:
             "type": "call_leave"
         })
 
+        # Stop audio capture
+        if self.state.audio_capture:
+            self.state.audio_capture.stop()
+
+        # Stop audio track
+        if self.state.audio_track:
+            self.state.audio_track.stop()
+            self.state.audio_track = None
+
         # Close all peer connections
         for pc in self.state.peer_connections.values():
             await pc.close()
@@ -241,13 +305,177 @@ class SpotifyBot:
         self.log("Opening Spotify Web Player...")
 
         try:
-            await self.state.page.goto("https://open.spotify.com")
-            await self.state.page.wait_for_load_state("networkidle")
+            await self.state.page.goto("https://open.spotify.com", wait_until="domcontentloaded")
+            await self.state.page.wait_for_timeout(3000)  # Wait for page to settle
             self.log("Spotify Web Player loaded")
             return True
         except Exception as e:
             self.log(f"Failed to open Spotify: {str(e)}")
             return False
+
+    async def login_spotify(self, username: str, password: str):
+        """Login to Spotify (one-time setup)"""
+        if not self.state.page:
+            self.log("Browser not initialized")
+            return False
+
+        self.log("Logging into Spotify...")
+
+        try:
+            # Navigate to login page
+            await self.state.page.goto("https://accounts.spotify.com/login", wait_until="domcontentloaded")
+            await self.state.page.wait_for_timeout(2000)
+
+            # Fill in credentials
+            await self.state.page.fill('input[id="login-username"]', username)
+            await self.state.page.fill('input[id="login-password"]', password)
+
+            # Click login button
+            await self.state.page.click('button[id="login-button"]')
+
+            # Wait for redirect to Spotify
+            await self.state.page.wait_for_url("**/open.spotify.com/**", timeout=30000)
+
+            self.state.is_logged_in = True
+            self.log("Logged into Spotify successfully")
+
+            # Save cookies for future sessions
+            await self._save_cookies()
+
+            return True
+
+        except Exception as e:
+            self.log(f"Failed to login to Spotify: {str(e)}")
+            return False
+
+    async def _save_cookies(self):
+        """Save browser cookies for persistent sessions"""
+        if not self.state.context:
+            return
+
+        try:
+            cookies = await self.state.context.cookies()
+            with open("/app/spotify_cookies.json", "w") as f:
+                json.dump(cookies, f)
+            self.log("Saved Spotify cookies")
+        except Exception as e:
+            self.log(f"Failed to save cookies: {e}")
+
+    async def _load_cookies(self):
+        """Load saved cookies for persistent sessions"""
+        if not self.state.context:
+            return False
+
+        try:
+            if os.path.exists("/app/spotify_cookies.json"):
+                with open("/app/spotify_cookies.json", "r") as f:
+                    cookies = json.load(f)
+                await self.state.context.add_cookies(cookies)
+                self.log("Loaded Spotify cookies")
+                return True
+        except Exception as e:
+            self.log(f"Failed to load cookies: {e}")
+
+        return False
+
+    async def play_track(self, uri: str):
+        """Play a specific track/album/playlist by Spotify URI"""
+        if not self.state.page or not self.state.is_logged_in:
+            self.log("Not logged in to Spotify")
+            return False
+
+        self.log(f"Playing: {uri}")
+
+        try:
+            # Convert URI to URL
+            # spotify:track:xxx -> https://open.spotify.com/track/xxx
+            uri_parts = uri.split(":")
+            if len(uri_parts) == 3:
+                url = f"https://open.spotify.com/{uri_parts[1]}/{uri_parts[2]}"
+                await self.state.page.goto(url, wait_until="domcontentloaded")
+                await self.state.page.wait_for_timeout(2000)
+
+                # Click the play button
+                play_button = await self.state.page.query_selector('[data-testid="play-button"]')
+                if play_button:
+                    await play_button.click()
+                    self.state.is_playing = True
+                    self.state.current_track = uri
+                    self.log("Started playback")
+                    return True
+
+            self.log("Could not find play button")
+            return False
+
+        except Exception as e:
+            self.log(f"Failed to play track: {str(e)}")
+            return False
+
+    async def pause(self):
+        """Pause playback"""
+        if not self.state.page:
+            return False
+
+        try:
+            pause_button = await self.state.page.query_selector('[data-testid="control-button-pause"]')
+            if pause_button:
+                await pause_button.click()
+                self.state.is_playing = False
+                self.log("Paused playback")
+                return True
+        except Exception as e:
+            self.log(f"Failed to pause: {str(e)}")
+
+        return False
+
+    async def resume(self):
+        """Resume playback"""
+        if not self.state.page:
+            return False
+
+        try:
+            play_button = await self.state.page.query_selector('[data-testid="control-button-play"]')
+            if play_button:
+                await play_button.click()
+                self.state.is_playing = True
+                self.log("Resumed playback")
+                return True
+        except Exception as e:
+            self.log(f"Failed to resume: {str(e)}")
+
+        return False
+
+    async def skip_next(self):
+        """Skip to next track"""
+        if not self.state.page:
+            return False
+
+        try:
+            next_button = await self.state.page.query_selector('[data-testid="control-button-skip-forward"]')
+            if next_button:
+                await next_button.click()
+                self.log("Skipped to next track")
+                return True
+        except Exception as e:
+            self.log(f"Failed to skip: {str(e)}")
+
+        return False
+
+    async def skip_previous(self):
+        """Skip to previous track"""
+        if not self.state.page:
+            return False
+
+        try:
+            prev_button = await self.state.page.query_selector('[data-testid="control-button-skip-back"]')
+            if prev_button:
+                await prev_button.click()
+                self.log("Skipped to previous track")
+                return True
+        except Exception as e:
+            self.log(f"Failed to skip back: {str(e)}")
+
+        return False
 
     # WebSocket message handlers
     async def _on_connected(self, data: dict):
@@ -346,7 +574,9 @@ class SpotifyBot:
         """Create a new peer connection to a peer"""
         self.log(f"Creating peer connection to {peer_id}")
 
-        pc = RTCPeerConnection()
+        # Create peer connection with ICE servers
+        config = RTCConfiguration(iceServers=ICE_SERVERS)
+        pc = RTCPeerConnection(configuration=config)
         self.state.peer_connections[peer_id] = pc
 
         # Handle ICE candidates
@@ -363,9 +593,14 @@ class SpotifyBot:
                     }
                 })
 
-        # Add audio track (we'll replace this with Spotify audio later)
-        # For now, create a silent audio track
-        # TODO: Replace with actual Spotify audio capture
+        @pc.on("connectionstatechange")
+        async def on_connectionstatechange():
+            self.log(f"Connection state with {peer_id}: {pc.connectionState}")
+
+        # Add audio track to peer connection
+        if self.state.audio_track:
+            pc.addTrack(self.state.audio_track)
+            self.log(f"Added audio track to peer connection with {peer_id}")
 
         # Create offer if requested
         if create_offer:

@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install system dependencies for Playwright and aiortc
+# Install system dependencies for Playwright, aiortc, and PulseAudio
 RUN apt-get update && apt-get install -y \
     # Playwright dependencies
     libnss3 \
@@ -29,6 +29,11 @@ RUN apt-get update && apt-get install -y \
     libopus-dev \
     libvpx-dev \
     pkg-config \
+    # PulseAudio for audio capture
+    pulseaudio \
+    pulseaudio-utils \
+    # X virtual framebuffer for headless GUI
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -44,6 +49,14 @@ RUN playwright install-deps chromium
 # Copy application code
 COPY . .
 
+# Copy PulseAudio configuration
+COPY pulse-config/default.pa /etc/pulse/default.pa
+COPY pulse-config/daemon.conf /etc/pulse/daemon.conf
+
+# Create startup script
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
 # Expose port for WebSocket and dashboard
 EXPOSE 8765
 
@@ -51,5 +64,5 @@ EXPOSE 8765
 ENV HOST=0.0.0.0
 ENV PORT=8765
 
-# Run the server
-CMD ["python", "main.py"]
+# Run the server with PulseAudio
+CMD ["/start.sh"]

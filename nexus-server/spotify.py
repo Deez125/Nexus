@@ -511,6 +511,7 @@ async def get_bot_status():
             "is_running": False,
             "is_in_call": False,
             "is_playing": False,
+            "is_logged_in": False,
             "current_track": None
         }
 
@@ -519,5 +520,123 @@ async def get_bot_status():
         "is_running": bot.state.is_running,
         "is_in_call": bot.state.is_in_call,
         "is_playing": bot.state.is_playing,
+        "is_logged_in": bot.state.is_logged_in,
         "current_track": bot.state.current_track
     }
+
+
+@router.post("/bot/login")
+async def bot_login(username: str, password: str):
+    """Login the bot to Spotify Web Player"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+
+    if not bot.state.is_running:
+        success = await bot.start()
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to start bot")
+
+    success = await bot.login_spotify(username, password)
+
+    if success:
+        return {"status": "logged_in", "message": "Bot logged into Spotify"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to login to Spotify")
+
+
+@router.post("/bot/open-spotify")
+async def bot_open_spotify():
+    """Open Spotify Web Player in the bot's browser"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+
+    if not bot.state.is_running:
+        success = await bot.start()
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to start bot")
+
+    # Try to load saved cookies first
+    await bot._load_cookies()
+
+    success = await bot.open_spotify()
+
+    if success:
+        return {"status": "opened", "message": "Spotify Web Player opened"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to open Spotify")
+
+
+@router.post("/bot/play")
+async def bot_play(uri: str):
+    """Play a track/album/playlist on the bot"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+
+    if not bot.state.is_running:
+        raise HTTPException(status_code=400, detail="Bot is not running")
+
+    success = await bot.play_track(uri)
+
+    if success:
+        return {"status": "playing", "uri": uri}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to play track")
+
+
+@router.post("/bot/pause")
+async def bot_pause():
+    """Pause playback on the bot"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+    success = await bot.pause()
+
+    if success:
+        return {"status": "paused"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to pause")
+
+
+@router.post("/bot/resume")
+async def bot_resume():
+    """Resume playback on the bot"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+    success = await bot.resume()
+
+    if success:
+        return {"status": "playing"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to resume")
+
+
+@router.post("/bot/next")
+async def bot_next():
+    """Skip to next track on the bot"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+    success = await bot.skip_next()
+
+    if success:
+        return {"status": "skipped"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to skip")
+
+
+@router.post("/bot/previous")
+async def bot_previous():
+    """Skip to previous track on the bot"""
+    from spotify_bot import get_bot
+
+    bot = await get_bot()
+    success = await bot.skip_previous()
+
+    if success:
+        return {"status": "previous"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to go to previous")

@@ -1,0 +1,18 @@
+# PulseAudio configuration for headless audio capture
+# This creates a virtual sink that Chromium outputs to
+
+# Load the native protocol module
+load-module module-native-protocol-unix
+
+# Create a virtual sink for capturing browser audio
+# This sink will receive all audio from Chromium
+load-module module-null-sink sink_name=browser_audio sink_properties=device.description="Browser_Audio"
+
+# Create a monitor source from the sink (for capturing)
+# The monitor is automatically created as browser_audio.monitor
+
+# Set the virtual sink as the default output
+set-default-sink browser_audio
+
+# Allow network access (for debugging)
+load-module module-native-protocol-tcp auth-anonymous=1
