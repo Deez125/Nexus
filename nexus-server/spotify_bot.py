@@ -51,6 +51,7 @@ class BotState:
     peer_connections: Dict[str, RTCPeerConnection] = field(default_factory=dict)
     audio_capture: Optional[PulseAudioCapture] = None
     audio_track: Optional[MediaStreamTrack] = None
+    device_id: Optional[str] = None  # Spotify Connect device ID
 
 
 class SpotifyBot:
@@ -318,20 +319,109 @@ class SpotifyBot:
         self.log("Left call")
 
     async def open_spotify(self):
-        """Open Spotify Web Player in the browser"""
+        """Initialize Spotify Web Playback SDK in the browser"""
         if not self.state.page:
             self.log("Browser not initialized")
             return False
 
-        self.log("Opening Spotify Web Player...")
+        self.log("Initializing Spotify Web Playback SDK...")
 
         try:
-            await self.state.page.goto("https://open.spotify.com", wait_until="domcontentloaded")
-            await self.state.page.wait_for_timeout(3000)  # Wait for page to settle
-            self.log("Spotify Web Player loaded")
-            return True
+            # Get access token from spotify.py
+            from spotify import tokens
+            access_token = tokens.get("access_token")
+
+            if not access_token:
+                self.log("No Spotify access token available - user needs to connect Spotify first")
+                return False
+
+            # Create HTML page with Spotify Web Playback SDK
+            sdk_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Nexus Spotify Player</title>
+                <script src="https://sdk.scdn.co/spotify-player.js"></script>
+            </head>
+            <body>
+                <h1>Nexus Spotify Bot</h1>
+                <div id="status">Initializing...</div>
+                <script>
+                    window.onSpotifyWebPlaybackSDKReady = () => {{
+                        const token = '{access_token}';
+                        const player = new Spotify.Player({{
+                            name: 'Nexus Bot',
+                            getOAuthToken: cb => {{ cb(token); }},
+                            volume: 1.0
+                        }});
+
+                        // Ready
+                        player.addListener('ready', ({{ device_id }}) => {{
+                            console.log('Ready with Device ID', device_id);
+                            document.getElementById('status').innerText = 'Ready: ' + device_id;
+                            window.spotifyDeviceId = device_id;
+                            window.spotifyPlayer = player;
+                        }});
+
+                        // Not Ready
+                        player.addListener('not_ready', ({{ device_id }}) => {{
+                            console.log('Device ID has gone offline', device_id);
+                            document.getElementById('status').innerText = 'Offline';
+                        }});
+
+                        // Error handling
+                        player.addListener('initialization_error', ({{ message }}) => {{
+                            console.error('Init error:', message);
+                            document.getElementById('status').innerText = 'Init Error: ' + message;
+                        }});
+
+                        player.addListener('authentication_error', ({{ message }}) => {{
+                            console.error('Auth error:', message);
+                            document.getElementById('status').innerText = 'Auth Error: ' + message;
+                        }});
+
+                        player.addListener('account_error', ({{ message }}) => {{
+                            console.error('Account error:', message);
+                            document.getElementById('status').innerText = 'Account Error (Premium required): ' + message;
+                        }});
+
+                        player.addListener('playback_error', ({{ message }}) => {{
+                            console.error('Playback error:', message);
+                        }});
+
+                        // Playback status updates
+                        player.addListener('player_state_changed', state => {{
+                            if (state) {{
+                                console.log('State changed:', state);
+                                window.spotifyState = state;
+                            }}
+                        }});
+
+                        player.connect();
+                    }};
+                </script>
+            </body>
+            </html>
+            """
+
+            await self.state.page.set_content(sdk_html)
+            await self.state.page.wait_for_timeout(3000)  # Wait for SDK to initialize
+
+            # Check if device ID was set
+            device_id = await self.state.page.evaluate("window.spotifyDeviceId")
+            if device_id:
+                self.state.device_id = device_id
+                self.log(f"Spotify SDK ready with device ID: {device_id}")
+                return True
+            else:
+                status = await self.state.page.evaluate("document.getElementById('status').innerText")
+                self.log(f"Spotify SDK status: {status}")
+                return False
+
         except Exception as e:
-            self.log(f"Failed to open Spotify: {str(e)}")
+            self.log(f"Failed to initialize Spotify SDK: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def login_spotify(self, username: str, password: str):
@@ -400,103 +490,94 @@ class SpotifyBot:
         return False
 
     async def play_track(self, uri: str):
-        """Play a specific track/album/playlist by Spotify URI"""
-        if not self.state.page or not self.state.is_logged_in:
-            self.log("Not logged in to Spotify")
-            return False
-
+        """Play a specific track/album/playlist by Spotify URI via API"""
         self.log(f"Playing: {uri}")
 
-        try:
-            # Convert URI to URL
-            # spotify:track:xxx -> https://open.spotify.com/track/xxx
-            uri_parts = uri.split(":")
-            if len(uri_parts) == 3:
-                url = f"https://open.spotify.com/{uri_parts[1]}/{uri_parts[2]}"
-                await self.state.page.goto(url, wait_until="domcontentloaded")
-                await self.state.page.wait_for_timeout(2000)
+        # Build the request body based on URI type
+        body = {}
+        device_param = f"?device_id={self.state.device_id}" if self.state.device_id else ""
 
-                # Click the play button
-                play_button = await self.state.page.query_selector('[data-testid="play-button"]')
-                if play_button:
-                    await play_button.click()
-                    self.state.is_playing = True
-                    self.state.current_track = uri
-                    self.log("Started playback")
-                    return True
+        if uri.startswith("spotify:track:"):
+            body["uris"] = [uri]
+        elif uri.startswith("spotify:album:") or uri.startswith("spotify:playlist:"):
+            body["context_uri"] = uri
+        else:
+            # Try to parse as context URI
+            body["context_uri"] = uri
 
-            self.log("Could not find play button")
+        success = await self._spotify_api_request("PUT", f"/me/player/play{device_param}", body)
+
+        if success:
+            self.state.is_playing = True
+            self.state.current_track = uri
+            self.log("Started playback")
+
+        return success
+
+    async def _spotify_api_request(self, method: str, endpoint: str, json_data: dict = None) -> bool:
+        """Make a request to the Spotify API using the stored token"""
+        from spotify import tokens
+
+        access_token = tokens.get("access_token")
+        if not access_token:
+            self.log("No Spotify access token")
             return False
 
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                headers = {"Authorization": f"Bearer {access_token}"}
+                url = f"https://api.spotify.com/v1{endpoint}"
+
+                if method == "PUT":
+                    response = await client.put(url, headers=headers, json=json_data)
+                elif method == "POST":
+                    response = await client.post(url, headers=headers, json=json_data)
+                else:
+                    response = await client.get(url, headers=headers)
+
+                if response.status_code in [200, 204]:
+                    return True
+                else:
+                    self.log(f"Spotify API error: {response.status_code} - {response.text}")
+                    return False
         except Exception as e:
-            self.log(f"Failed to play track: {str(e)}")
+            self.log(f"Spotify API request failed: {str(e)}")
             return False
 
     async def pause(self):
-        """Pause playback"""
-        if not self.state.page:
-            return False
-
-        try:
-            pause_button = await self.state.page.query_selector('[data-testid="control-button-pause"]')
-            if pause_button:
-                await pause_button.click()
-                self.state.is_playing = False
-                self.log("Paused playback")
-                return True
-        except Exception as e:
-            self.log(f"Failed to pause: {str(e)}")
-
-        return False
+        """Pause playback via Spotify API"""
+        device_param = f"?device_id={self.state.device_id}" if self.state.device_id else ""
+        success = await self._spotify_api_request("PUT", f"/me/player/pause{device_param}")
+        if success:
+            self.state.is_playing = False
+            self.log("Paused playback")
+        return success
 
     async def resume(self):
-        """Resume playback"""
-        if not self.state.page:
-            return False
-
-        try:
-            play_button = await self.state.page.query_selector('[data-testid="control-button-play"]')
-            if play_button:
-                await play_button.click()
-                self.state.is_playing = True
-                self.log("Resumed playback")
-                return True
-        except Exception as e:
-            self.log(f"Failed to resume: {str(e)}")
-
-        return False
+        """Resume playback via Spotify API"""
+        device_param = f"?device_id={self.state.device_id}" if self.state.device_id else ""
+        success = await self._spotify_api_request("PUT", f"/me/player/play{device_param}")
+        if success:
+            self.state.is_playing = True
+            self.log("Resumed playback")
+        return success
 
     async def skip_next(self):
-        """Skip to next track"""
-        if not self.state.page:
-            return False
-
-        try:
-            next_button = await self.state.page.query_selector('[data-testid="control-button-skip-forward"]')
-            if next_button:
-                await next_button.click()
-                self.log("Skipped to next track")
-                return True
-        except Exception as e:
-            self.log(f"Failed to skip: {str(e)}")
-
-        return False
+        """Skip to next track via Spotify API"""
+        device_param = f"?device_id={self.state.device_id}" if self.state.device_id else ""
+        success = await self._spotify_api_request("POST", f"/me/player/next{device_param}")
+        if success:
+            self.log("Skipped to next track")
+        return success
 
     async def skip_previous(self):
-        """Skip to previous track"""
-        if not self.state.page:
-            return False
-
-        try:
-            prev_button = await self.state.page.query_selector('[data-testid="control-button-skip-back"]')
-            if prev_button:
-                await prev_button.click()
-                self.log("Skipped to previous track")
-                return True
-        except Exception as e:
-            self.log(f"Failed to skip back: {str(e)}")
-
-        return False
+        """Skip to previous track via Spotify API"""
+        device_param = f"?device_id={self.state.device_id}" if self.state.device_id else ""
+        success = await self._spotify_api_request("POST", f"/me/player/previous{device_param}")
+        if success:
+            self.log("Skipped to previous track")
+        return success
 
     # WebSocket message handlers
     async def _on_connected(self, data: dict):
