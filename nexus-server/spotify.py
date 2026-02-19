@@ -482,6 +482,9 @@ async def bot_join_call():
         if not success:
             raise HTTPException(status_code=500, detail="Failed to start bot")
 
+        # Also open Spotify Web Player
+        await bot.open_spotify()
+
     success = await bot.join_call()
 
     if success:
