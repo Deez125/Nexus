@@ -338,81 +338,82 @@ class SpotifyBot:
                 self.log("No Spotify access token available - user needs to connect Spotify first")
                 return False
 
-            # Create HTML page with Spotify Web Playback SDK
-            sdk_html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Nexus Spotify Player</title>
-                <script src="https://sdk.scdn.co/spotify-player.js"></script>
-            </head>
-            <body>
-                <h1>Nexus Spotify Bot</h1>
-                <div id="status">Initializing...</div>
-                <script>
-                    window.onSpotifyWebPlaybackSDKReady = () => {{
-                        const token = '{access_token}';
-                        const player = new Spotify.Player({{
-                            name: 'Nexus Bot',
-                            getOAuthToken: cb => {{ cb(token); }},
-                            volume: 1.0
-                        }});
-
-                        // Ready
-                        player.addListener('ready', ({{ device_id }}) => {{
-                            console.log('Ready with Device ID', device_id);
-                            document.getElementById('status').innerText = 'Ready: ' + device_id;
-                            window.spotifyDeviceId = device_id;
-                            window.spotifyPlayer = player;
-                        }});
-
-                        // Not Ready
-                        player.addListener('not_ready', ({{ device_id }}) => {{
-                            console.log('Device ID has gone offline', device_id);
-                            document.getElementById('status').innerText = 'Offline';
-                        }});
-
-                        // Error handling
-                        player.addListener('initialization_error', ({{ message }}) => {{
-                            console.error('Init error:', message);
-                            document.getElementById('status').innerText = 'Init Error: ' + message;
-                        }});
-
-                        player.addListener('authentication_error', ({{ message }}) => {{
-                            console.error('Auth error:', message);
-                            document.getElementById('status').innerText = 'Auth Error: ' + message;
-                        }});
-
-                        player.addListener('account_error', ({{ message }}) => {{
-                            console.error('Account error:', message);
-                            document.getElementById('status').innerText = 'Account Error (Premium required): ' + message;
-                        }});
-
-                        player.addListener('playback_error', ({{ message }}) => {{
-                            console.error('Playback error:', message);
-                        }});
-
-                        // Playback status updates
-                        player.addListener('player_state_changed', state => {{
-                            if (state) {{
-                                console.log('State changed:', state);
-                                window.spotifyState = state;
-                            }}
-                        }});
-
-                        player.connect();
-                    }};
-                </script>
-            </body>
-            </html>
-            """
-
             # Capture browser console logs
             self.state.page.on("console", lambda msg: self.log(f"[Browser] {msg.text}"))
 
-            await self.state.page.set_content(sdk_html)
-            self.log("SDK HTML loaded, waiting for initialization...")
-            await self.state.page.wait_for_timeout(5000)  # Wait longer for SDK to initialize
+            # Navigate to a real HTTPS page first (required for DRM/EME)
+            # We'll use open.spotify.com and inject our SDK code
+            self.log("Navigating to Spotify (HTTPS context required for DRM)...")
+            await self.state.page.goto("https://open.spotify.com", wait_until="domcontentloaded")
+            await self.state.page.wait_for_timeout(2000)
+
+            # Now inject the Web Playback SDK
+            self.log("Injecting Web Playback SDK...")
+            await self.state.page.evaluate(f"""
+                (async () => {{
+                    // Load the SDK script
+                    const script = document.createElement('script');
+                    script.src = 'https://sdk.scdn.co/spotify-player.js';
+                    document.head.appendChild(script);
+
+                    // Wait for SDK to load
+                    await new Promise(resolve => {{
+                        window.onSpotifyWebPlaybackSDKReady = resolve;
+                    }});
+
+                    const token = '{access_token}';
+                    const player = new Spotify.Player({{
+                        name: 'Nexus Bot',
+                        getOAuthToken: cb => {{ cb(token); }},
+                        volume: 1.0
+                    }});
+
+                    // Ready
+                    player.addListener('ready', ({{ device_id }}) => {{
+                        console.log('Ready with Device ID', device_id);
+                        window.spotifyDeviceId = device_id;
+                        window.spotifyPlayer = player;
+                    }});
+
+                    // Not Ready
+                    player.addListener('not_ready', ({{ device_id }}) => {{
+                        console.log('Device ID has gone offline', device_id);
+                    }});
+
+                    // Error handling
+                    player.addListener('initialization_error', ({{ message }}) => {{
+                        console.error('Init error:', message);
+                        window.spotifyInitError = message;
+                    }});
+
+                    player.addListener('authentication_error', ({{ message }}) => {{
+                        console.error('Auth error:', message);
+                        window.spotifyInitError = 'Auth: ' + message;
+                    }});
+
+                    player.addListener('account_error', ({{ message }}) => {{
+                        console.error('Account error:', message);
+                        window.spotifyInitError = 'Account (Premium required): ' + message;
+                    }});
+
+                    player.addListener('playback_error', ({{ message }}) => {{
+                        console.error('Playback error:', message);
+                    }});
+
+                    // Playback status updates
+                    player.addListener('player_state_changed', state => {{
+                        if (state) {{
+                            console.log('State changed:', state);
+                            window.spotifyState = state;
+                        }}
+                    }});
+
+                    await player.connect();
+                }})();
+            """)
+
+            self.log("SDK injected, waiting for initialization...")
+            await self.state.page.wait_for_timeout(5000)  # Wait for SDK to initialize
 
             # Check if device ID was set
             device_id = await self.state.page.evaluate("window.spotifyDeviceId")
@@ -421,8 +422,8 @@ class SpotifyBot:
                 self.log(f"Spotify SDK ready with device ID: {device_id}")
                 return True
             else:
-                status = await self.state.page.evaluate("document.getElementById('status').innerText")
-                self.log(f"Spotify SDK status: {status}")
+                error = await self.state.page.evaluate("window.spotifyInitError || 'Unknown error'")
+                self.log(f"Spotify SDK failed to initialize: {error}")
                 return False
 
         except Exception as e:
