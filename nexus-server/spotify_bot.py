@@ -118,10 +118,11 @@ class SpotifyBot:
                 ]
             )
 
-            # Create browser context with permissions
+            # Create browser context with permissions and bypass CSP
             self.state.context = await self.state.browser.new_context(
                 viewport={'width': 1280, 'height': 720},
-                user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                bypass_csp=True  # Bypass Content Security Policy to allow SDK injection
             )
 
             self.state.page = await self.state.context.new_page()
