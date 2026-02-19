@@ -1081,6 +1081,8 @@ export default function App() {
   const [spotifyTrack, setSpotifyTrack] = useState<{ name: string; artist: string; artistId?: string; album: string; albumArt: string; duration: number; progress: number } | null>(null);
   const [spotifyIsPlaying, setSpotifyIsPlaying] = useState(false);
   const [spotifyProgress, setSpotifyProgress] = useState(0);
+  const [spotifyShuffle, setSpotifyShuffle] = useState(false);
+  const [spotifyRepeat, setSpotifyRepeat] = useState<"off" | "context" | "track">("off");
   const [userVolumes, setUserVolumes] = useState<Record<string, number>>({});
   const [debugUsers, setDebugUsers] = useState<{ id: string; name: string; color: string }[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1632,15 +1634,15 @@ export default function App() {
                                 objectFit: "cover",
                               }}
                             />
-                            {/* Gradient overlay for controls visibility */}
+                            {/* Dark overlay over entire tile for visibility */}
                             <div
                               style={{
                                 position: "absolute",
-                                bottom: 0,
+                                top: 0,
                                 left: 0,
                                 right: 0,
-                                height: "70%",
-                                background: "linear-gradient(to top, rgba(0,0,0,0.9), transparent)",
+                                bottom: 0,
+                                background: "rgba(0,0,0,0.5)",
                                 pointerEvents: "none",
                               }}
                             />
@@ -1659,14 +1661,98 @@ export default function App() {
                             bottom: 0,
                             left: 0,
                             right: 0,
-                            padding: "12px 16px",
+                            padding: "16px 20px",
                             display: "flex",
                             flexDirection: "column",
-                            gap: 8,
+                            gap: 12,
                           }}
                         >
+                          {/* Track info - above progress bar */}
+                          {spotifyTrack && (
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {spotifyTrack.name}
+                              </div>
+                              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+                                {spotifyTrack.artist}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Progress bar with dot */}
+                          <div
+                            style={{
+                              height: 4,
+                              background: "rgba(255,255,255,0.3)",
+                              borderRadius: 2,
+                              cursor: "pointer",
+                              position: "relative",
+                            }}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!spotifyTrack) return;
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const pct = ((e.clientX - rect.left) / rect.width) * 100;
+                              const positionMs = Math.floor((pct / 100) * spotifyTrack.duration);
+                              try {
+                                await fetch(`${SPOTIFY_API}/seek?position_ms=${positionMs}`, { method: "PUT" });
+                              } catch (err) {
+                                console.error("Failed to seek:", err);
+                              }
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${spotifyProgress}%`,
+                                height: "100%",
+                                background: "#1DB954",
+                                borderRadius: 2,
+                                position: "relative",
+                              }}
+                            >
+                              {/* Progress dot */}
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  right: -5,
+                                  top: -3,
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: "50%",
+                                  background: "#fff",
+                                }}
+                              />
+                            </div>
+                          </div>
+
                           {/* Controls row */}
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+                            {/* Shuffle button */}
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await fetch(`${SPOTIFY_API}/shuffle?state=${!spotifyShuffle}`, { method: "PUT" });
+                                } catch (err) {
+                                  console.error("Failed to toggle shuffle:", err);
+                                }
+                              }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: spotifyShuffle ? "#1DB954" : "rgba(255,255,255,0.7)",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: 8,
+                                transition: "color 0.15s",
+                              }}
+                            >
+                              <BsShuffle size={18} />
+                            </button>
+
+                            {/* Previous button */}
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
@@ -1677,23 +1763,23 @@ export default function App() {
                                 }
                               }}
                               style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: "50%",
-                                background: "rgba(255,255,255,0.15)",
+                                background: "transparent",
                                 border: "none",
                                 color: "#fff",
                                 cursor: "pointer",
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                transition: "background 0.15s",
+                                padding: 8,
+                                transition: "transform 0.15s",
                               }}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.25)")}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.15)")}
+                              onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.1)")}
+                              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
                             >
-                              <BsSkipStartFill size={18} />
+                              <BsSkipStartFill size={24} />
                             </button>
+
+                            {/* Play/Pause button */}
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
@@ -1721,6 +1807,8 @@ export default function App() {
                             >
                               {spotifyIsPlaying ? <BsPauseFill size={24} /> : <BsPlayFill size={24} style={{ marginLeft: 3 }} />}
                             </button>
+
+                            {/* Next button */}
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
@@ -1731,68 +1819,48 @@ export default function App() {
                                 }
                               }}
                               style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: "50%",
-                                background: "rgba(255,255,255,0.15)",
+                                background: "transparent",
                                 border: "none",
                                 color: "#fff",
                                 cursor: "pointer",
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                transition: "background 0.15s",
+                                padding: 8,
+                                transition: "transform 0.15s",
                               }}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.25)")}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.15)")}
+                              onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.1)")}
+                              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
                             >
-                              <BsSkipEndFill size={18} />
+                              <BsSkipEndFill size={24} />
+                            </button>
+
+                            {/* Repeat button */}
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const nextState = spotifyRepeat === "off" ? "context" : spotifyRepeat === "context" ? "track" : "off";
+                                try {
+                                  await fetch(`${SPOTIFY_API}/repeat?state=${nextState}`, { method: "PUT" });
+                                } catch (err) {
+                                  console.error("Failed to toggle repeat:", err);
+                                }
+                              }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: spotifyRepeat !== "off" ? "#1DB954" : "rgba(255,255,255,0.7)",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: 8,
+                                transition: "color 0.15s",
+                              }}
+                            >
+                              {spotifyRepeat === "track" ? <BsRepeat1 size={18} /> : <BsRepeat size={18} />}
                             </button>
                           </div>
-
-                          {/* Progress bar */}
-                          <div
-                            style={{
-                              height: 4,
-                              background: "rgba(255,255,255,0.2)",
-                              borderRadius: 2,
-                              cursor: "pointer",
-                              position: "relative",
-                            }}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (!spotifyTrack) return;
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              const pct = ((e.clientX - rect.left) / rect.width) * 100;
-                              const positionMs = Math.floor((pct / 100) * spotifyTrack.duration);
-                              try {
-                                await fetch(`${SPOTIFY_API}/seek?position_ms=${positionMs}`, { method: "PUT" });
-                              } catch (err) {
-                                console.error("Failed to seek:", err);
-                              }
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: `${spotifyProgress}%`,
-                                height: "100%",
-                                background: "#1DB954",
-                                borderRadius: 2,
-                              }}
-                            />
-                          </div>
-
-                          {/* Track info */}
-                          {spotifyTrack && (
-                            <div style={{ textAlign: "center" }}>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {spotifyTrack.name}
-                              </div>
-                              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {spotifyTrack.artist}
-                              </div>
-                            </div>
-                          )}
                         </div>
 
                         <div style={s.tileName}>Spotify</div>
@@ -2089,7 +2157,7 @@ export default function App() {
 
         {/* Right Sidebar - Spotify */}
         {rightSidebarOpen && (
-          <SpotifySidebar isConnected={spotifyConnected} onConnect={() => setSpotifyConnected(true)} onDisconnect={() => setSpotifyConnected(false)} onTrackChange={setSpotifyTrack} onPlayingChange={setSpotifyIsPlaying} onProgressChange={setSpotifyProgress} />
+          <SpotifySidebar isConnected={spotifyConnected} onConnect={() => setSpotifyConnected(true)} onDisconnect={() => setSpotifyConnected(false)} onTrackChange={setSpotifyTrack} onPlayingChange={setSpotifyIsPlaying} onProgressChange={setSpotifyProgress} onShuffleChange={setSpotifyShuffle} onRepeatChange={setSpotifyRepeat} />
         )}
 
       </div>
@@ -2174,7 +2242,7 @@ function SpotifyControlBtn({ children, onClick, size = 32, active = false }: { c
 // Always use production API
 const SPOTIFY_API = "https://nexus-api.pulpfliction.com/api/spotify";
 
-function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect, onTrackChange, onPlayingChange, onProgressChange }: { isConnected: boolean; onConnect: () => void; onDisconnect: () => void; onTrackChange?: (track: { name: string; artist: string; artistId?: string; album: string; albumArt: string; duration: number; progress: number } | null) => void; onPlayingChange?: (playing: boolean) => void; onProgressChange?: (progress: number) => void }) {
+function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect, onTrackChange, onPlayingChange, onProgressChange, onShuffleChange, onRepeatChange }: { isConnected: boolean; onConnect: () => void; onDisconnect: () => void; onTrackChange?: (track: { name: string; artist: string; artistId?: string; album: string; albumArt: string; duration: number; progress: number } | null) => void; onPlayingChange?: (playing: boolean) => void; onProgressChange?: (progress: number) => void; onShuffleChange?: (shuffle: boolean) => void; onRepeatChange?: (repeat: "off" | "context" | "track") => void }) {
   const [activeTab, setActiveTab] = useState<"playing" | "playlists" | "search" | "artist" | "album" | "playlist">("playing");
   const [isPlaying, setIsPlaying] = useState(false);
   const [shuffle, setShuffle] = useState(false);
@@ -2228,7 +2296,9 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect, o
           setIsPlaying(data.is_playing || false);
           onPlayingChange?.(data.is_playing || false);
           setShuffle(data.shuffle_state || false);
+          onShuffleChange?.(data.shuffle_state || false);
           setRepeat(data.repeat_state || "off");
+          onRepeatChange?.(data.repeat_state || "off");
           if (data.item.duration_ms) {
             const prog = (data.progress_ms / data.item.duration_ms) * 100;
             setProgress(prog);
@@ -2247,7 +2317,7 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect, o
     } catch (e) {
       console.error("Failed to fetch player state:", e);
     }
-  }, [onTrackChange, onPlayingChange, onProgressChange]);
+  }, [onTrackChange, onPlayingChange, onProgressChange, onShuffleChange, onRepeatChange]);
 
   // Fetch playlists
   const fetchPlaylists = useCallback(async () => {
@@ -3838,7 +3908,7 @@ function ContextMenu({ x, y, type, data, onClose, onTileAction, userVolume, onUs
   const adjustedY = Math.min(y, window.innerHeight - 350);
 
   // Show volume slider for tile and friend menus (not for "me" tile)
-  const showVolumeSlider = (type === "tile" || type === "friend") && data?.tileId !== "me";
+  const showVolumeSlider = (type === "tile" && data?.tileId !== "me") || type === "friend";
 
   const menuItems = type === "tile" ? [
     { icon: <HiUserCircle size={14} />, label: "View Profile", action: () => {} },
