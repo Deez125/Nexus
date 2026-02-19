@@ -404,8 +404,12 @@ class SpotifyBot:
             </html>
             """
 
+            # Capture browser console logs
+            self.state.page.on("console", lambda msg: self.log(f"[Browser] {msg.text}"))
+
             await self.state.page.set_content(sdk_html)
-            await self.state.page.wait_for_timeout(3000)  # Wait for SDK to initialize
+            self.log("SDK HTML loaded, waiting for initialization...")
+            await self.state.page.wait_for_timeout(5000)  # Wait longer for SDK to initialize
 
             # Check if device ID was set
             device_id = await self.state.page.evaluate("window.spotifyDeviceId")
