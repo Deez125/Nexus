@@ -495,11 +495,11 @@ async def bot_join_call():
 
 @router.post("/bot/leave")
 async def bot_leave_call():
-    """Make the bot leave the voice call"""
+    """Make the bot leave the voice call and stop the bot (closes browser)"""
     from spotify_bot import get_bot
 
     bot = await get_bot()
-    await bot.leave_call()
+    await bot.stop()  # This leaves call AND closes browser
 
     return {"status": "left", "message": "Bot left the call"}
 
