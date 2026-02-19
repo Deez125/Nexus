@@ -239,9 +239,23 @@ class SpotifyBot:
             self.log("Bot is not running")
             return False
 
+        # Check if we think we're in a call but the WS is dead
         if self.state.is_in_call:
-            self.log("Already in call")
-            return True
+            if not self.state.ws or self.state.ws.closed:
+                self.log("Was in call but WebSocket died, resetting state...")
+                self.state.is_in_call = False
+                # Clean up stale resources
+                if self.state.audio_capture:
+                    self.state.audio_capture.stop()
+                if self.state.audio_track:
+                    self.state.audio_track.stop()
+                    self.state.audio_track = None
+                for pc in self.state.peer_connections.values():
+                    await pc.close()
+                self.state.peer_connections.clear()
+            else:
+                self.log("Already in call")
+                return True
 
         self.log("Joining call...")
 
