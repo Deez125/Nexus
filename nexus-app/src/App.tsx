@@ -1392,46 +1392,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Spotify User Box */}
-          {spotifyConnected && (
-            <SpotifyUserBox
-              track={spotifyTrack}
-              isPlaying={spotifyIsPlaying}
-              progress={spotifyProgress}
-              onTogglePlay={async () => {
-                try {
-                  await fetch(`${SPOTIFY_API}/${spotifyIsPlaying ? "pause" : "play"}`, { method: "PUT" });
-                } catch (e) {
-                  console.error("Failed to toggle playback:", e);
-                }
-              }}
-              onSkipPrevious={async () => {
-                try {
-                  await fetch(`${SPOTIFY_API}/previous`, { method: "POST" });
-                } catch (e) {
-                  console.error("Failed to skip previous:", e);
-                }
-              }}
-              onSkipNext={async () => {
-                try {
-                  await fetch(`${SPOTIFY_API}/next`, { method: "POST" });
-                } catch (e) {
-                  console.error("Failed to skip next:", e);
-                }
-              }}
-              onSeek={async (percent: number) => {
-                if (!spotifyTrack) return;
-                const positionMs = Math.floor((percent / 100) * spotifyTrack.duration);
-                try {
-                  await fetch(`${SPOTIFY_API}/seek?position_ms=${positionMs}`, { method: "PUT" });
-                } catch (e) {
-                  console.error("Failed to seek:", e);
-                }
-              }}
-              onClick={() => setRightSidebarOpen(true)}
-            />
-          )}
-
           <div
             style={{ ...s.userCard, cursor: "pointer" }}
             onClick={() => {
@@ -1648,7 +1608,8 @@ export default function App() {
                             flexShrink: 0,
                             aspectRatio: "16/9",
                           } : {}),
-                          order: 99
+                          order: 99,
+                          overflow: "hidden",
                         }}
                         onContextMenu={(e) => {
                           e.preventDefault();
@@ -1656,10 +1617,184 @@ export default function App() {
                           setContextMenu({ show: true, x: e.clientX, y: e.clientY, type: "tile", data: { tileId: "spotify", tileName: "Spotify" } });
                         }}
                       >
-                        <div style={s.voicePlaceholder}>
-                          <BsSpotify size={48} color="#1DB954" />
-                          <div style={{ fontSize: 13, fontWeight: 500, marginTop: 8 }}>Spotify</div>
+                        {/* Album art as background when playing */}
+                        {spotifyTrack?.albumArt ? (
+                          <>
+                            <img
+                              src={spotifyTrack.albumArt}
+                              alt={spotifyTrack.album}
+                              style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                            {/* Gradient overlay for controls visibility */}
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                height: "70%",
+                                background: "linear-gradient(to top, rgba(0,0,0,0.9), transparent)",
+                                pointerEvents: "none",
+                              }}
+                            />
+                          </>
+                        ) : (
+                          <div style={s.voicePlaceholder}>
+                            <BsSpotify size={48} color="#1DB954" />
+                            <div style={{ fontSize: 13, fontWeight: 500, marginTop: 8 }}>Spotify</div>
+                          </div>
+                        )}
+
+                        {/* Playback controls overlay */}
+                        <div
+                          style={{
+                            position: "absolute",
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            padding: "12px 16px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 8,
+                          }}
+                        >
+                          {/* Controls row */}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await fetch(`${SPOTIFY_API}/previous`, { method: "POST" });
+                                } catch (err) {
+                                  console.error("Failed to skip previous:", err);
+                                }
+                              }}
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: "50%",
+                                background: "rgba(255,255,255,0.15)",
+                                border: "none",
+                                color: "#fff",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                transition: "background 0.15s",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.25)")}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.15)")}
+                            >
+                              <BsSkipStartFill size={18} />
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await fetch(`${SPOTIFY_API}/${spotifyIsPlaying ? "pause" : "play"}`, { method: "PUT" });
+                                } catch (err) {
+                                  console.error("Failed to toggle playback:", err);
+                                }
+                              }}
+                              style={{
+                                width: 48,
+                                height: 48,
+                                borderRadius: "50%",
+                                background: "#fff",
+                                border: "none",
+                                color: "#000",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                transition: "transform 0.15s",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+                              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                            >
+                              {spotifyIsPlaying ? <BsPauseFill size={24} /> : <BsPlayFill size={24} style={{ marginLeft: 3 }} />}
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await fetch(`${SPOTIFY_API}/next`, { method: "POST" });
+                                } catch (err) {
+                                  console.error("Failed to skip next:", err);
+                                }
+                              }}
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: "50%",
+                                background: "rgba(255,255,255,0.15)",
+                                border: "none",
+                                color: "#fff",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                transition: "background 0.15s",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.25)")}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.15)")}
+                            >
+                              <BsSkipEndFill size={18} />
+                            </button>
+                          </div>
+
+                          {/* Progress bar */}
+                          <div
+                            style={{
+                              height: 4,
+                              background: "rgba(255,255,255,0.2)",
+                              borderRadius: 2,
+                              cursor: "pointer",
+                              position: "relative",
+                            }}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!spotifyTrack) return;
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const pct = ((e.clientX - rect.left) / rect.width) * 100;
+                              const positionMs = Math.floor((pct / 100) * spotifyTrack.duration);
+                              try {
+                                await fetch(`${SPOTIFY_API}/seek?position_ms=${positionMs}`, { method: "PUT" });
+                              } catch (err) {
+                                console.error("Failed to seek:", err);
+                              }
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${spotifyProgress}%`,
+                                height: "100%",
+                                background: "#1DB954",
+                                borderRadius: 2,
+                              }}
+                            />
+                          </div>
+
+                          {/* Track info */}
+                          {spotifyTrack && (
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {spotifyTrack.name}
+                              </div>
+                              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {spotifyTrack.artist}
+                              </div>
+                            </div>
+                          )}
                         </div>
+
                         <div style={s.tileName}>Spotify</div>
                       </div>
                     )}
@@ -3213,232 +3348,6 @@ function FriendItem({ friend, active, onClick, onContextMenu }: { friend: { id: 
         {friend.activity && <div style={{ fontSize: 11, color: T.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{friend.activity}</div>}
       </div>
       {friend.unread > 0 && <div style={s.unreadBadge}>{friend.unread}</div>}
-    </div>
-  );
-}
-
-// Format time helper for Spotify
-const formatSpotifyTime = (ms: number) => {
-  const seconds = Math.floor(ms / 1000);
-  const m = Math.floor(seconds / 60);
-  const sec = seconds % 60;
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-};
-
-function SpotifyUserBox({ track, isPlaying, progress, onTogglePlay, onSkipPrevious, onSkipNext, onSeek, onClick }: {
-  track: { name: string; artist: string; artistId?: string; album: string; albumArt: string; duration: number; progress: number } | null;
-  isPlaying: boolean;
-  progress: number;
-  onTogglePlay: () => void;
-  onSkipPrevious: () => void;
-  onSkipNext: () => void;
-  onSeek: (percent: number) => void;
-  onClick: () => void;
-}) {
-  const [h, setH] = useState(false);
-
-  // When nothing is playing (no track or no track name), show simple Spotify user box
-  if (!track || !track.name) {
-    return (
-      <div
-        style={{
-          padding: "10px 12px",
-          borderTop: `1px solid ${T.border}`,
-          cursor: "pointer",
-          background: h ? T.bg2 : "transparent",
-          transition: "background 0.12s",
-        }}
-        onMouseEnter={() => setH(true)}
-        onMouseLeave={() => setH(false)}
-        onClick={onClick}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <BsSpotify size={20} color="#000" />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Spotify</div>
-            <div style={{ fontSize: 11, color: T.textMuted }}>Connected</div>
-          </div>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#1DB954" }} />
-        </div>
-      </div>
-    );
-  }
-
-  // When something is playing, show album art with controls
-  return (
-    <div
-      style={{
-        padding: "10px 12px",
-        borderTop: `1px solid ${T.border}`,
-        background: T.bg2,
-      }}
-    >
-      {/* Album Art with controls overlay */}
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          aspectRatio: "1",
-          borderRadius: 8,
-          overflow: "hidden",
-          marginBottom: 8,
-          cursor: "pointer",
-        }}
-        onClick={onClick}
-      >
-        <img
-          src={track.albumArt}
-          alt={track.album}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
-        {/* Gradient overlay for controls */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: "60%",
-            background: "linear-gradient(to top, rgba(0,0,0,0.8), transparent)",
-            pointerEvents: "none",
-          }}
-        />
-        {/* Controls - positioned at bottom */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: 8,
-            left: 0,
-            right: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={onSkipPrevious}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: "50%",
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              color: "#fff",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "background 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.2)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
-          >
-            <BsSkipStartFill size={16} />
-          </button>
-          <button
-            onClick={onTogglePlay}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              background: "#fff",
-              border: "none",
-              color: "#000",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "transform 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-          >
-            {isPlaying ? <BsPauseFill size={20} /> : <BsPlayFill size={20} style={{ marginLeft: 2 }} />}
-          </button>
-          <button
-            onClick={onSkipNext}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: "50%",
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              color: "#fff",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "background 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.2)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
-          >
-            <BsSkipEndFill size={16} />
-          </button>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div style={{ marginBottom: 6 }}>
-        <div
-          style={{
-            height: 3,
-            background: T.bg3,
-            borderRadius: 2,
-            cursor: "pointer",
-            position: "relative",
-          }}
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const pct = ((e.clientX - rect.left) / rect.width) * 100;
-            onSeek(Math.max(0, Math.min(100, pct)));
-          }}
-        >
-          <div
-            style={{
-              width: `${progress}%`,
-              height: "100%",
-              background: "#1DB954",
-              borderRadius: 2,
-            }}
-          />
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, color: T.textMuted }}>
-          <span>{formatSpotifyTime(track.progress)}</span>
-          <span>{formatSpotifyTime(track.duration)}</span>
-        </div>
-      </div>
-
-      {/* Track info */}
-      <div style={{ textAlign: "center" }}>
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: T.text,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {track.name}
-        </div>
-        <div
-          style={{
-            fontSize: 10,
-            color: T.textMuted,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {track.artist}
-        </div>
-      </div>
     </div>
   );
 }
