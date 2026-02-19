@@ -1695,7 +1695,7 @@ export default function App() {
                               const pct = ((e.clientX - rect.left) / rect.width) * 100;
                               const positionMs = Math.floor((pct / 100) * spotifyTrack.duration);
                               try {
-                                await fetch(`${SPOTIFY_API}/seek?position_ms=${positionMs}`, { method: "PUT" });
+                                await fetch(`${SPOTIFY_API}/player/seek?position_ms=${positionMs}`, { method: "PUT" });
                               } catch (err) {
                                 console.error("Failed to seek:", err);
                               }
@@ -1732,7 +1732,7 @@ export default function App() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  await fetch(`${SPOTIFY_API}/shuffle?state=${!spotifyShuffle}`, { method: "PUT" });
+                                  await fetch(`${SPOTIFY_API}/player/shuffle?state=${!spotifyShuffle}`, { method: "PUT" });
                                 } catch (err) {
                                   console.error("Failed to toggle shuffle:", err);
                                 }
@@ -1757,7 +1757,7 @@ export default function App() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  await fetch(`${SPOTIFY_API}/previous`, { method: "POST" });
+                                  await fetch(`${SPOTIFY_API}/bot/previous`, { method: "POST" });
                                 } catch (err) {
                                   console.error("Failed to skip previous:", err);
                                 }
@@ -1784,7 +1784,7 @@ export default function App() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  await fetch(`${SPOTIFY_API}/${spotifyIsPlaying ? "pause" : "play"}`, { method: "PUT" });
+                                  await fetch(`${SPOTIFY_API}/player/${spotifyIsPlaying ? "pause" : "play"}`, { method: "PUT" });
                                 } catch (err) {
                                   console.error("Failed to toggle playback:", err);
                                 }
@@ -1813,7 +1813,7 @@ export default function App() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  await fetch(`${SPOTIFY_API}/next`, { method: "POST" });
+                                  await fetch(`${SPOTIFY_API}/bot/next`, { method: "POST" });
                                 } catch (err) {
                                   console.error("Failed to skip next:", err);
                                 }
@@ -1841,7 +1841,7 @@ export default function App() {
                                 e.stopPropagation();
                                 const nextState = spotifyRepeat === "off" ? "context" : spotifyRepeat === "context" ? "track" : "off";
                                 try {
-                                  await fetch(`${SPOTIFY_API}/repeat?state=${nextState}`, { method: "PUT" });
+                                  await fetch(`${SPOTIFY_API}/player/repeat?state=${nextState}`, { method: "PUT" });
                                 } catch (err) {
                                   console.error("Failed to toggle repeat:", err);
                                 }
