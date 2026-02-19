@@ -2046,7 +2046,11 @@ export default function App() {
                         setUserVolumes(prev => ({ ...prev, [id]: volume }));
                         // Apply volume to remote audio (for 1-on-1 calls, this affects the other person)
                         // In the future, multi-peer support could use the id to target specific users
-                        if (id !== "spotify") {
+                        if (id === "spotify") {
+                          // Spotify volume is 0-100%, our slider is 0-200%
+                          const spotifyVolume = Math.min(100, Math.round(volume));
+                          fetch(`${SPOTIFY_API}/player/volume?volume_percent=${spotifyVolume}`, { method: "PUT" });
+                        } else {
                           setRemoteVolume(volume);
                         }
                       }}
@@ -2185,7 +2189,11 @@ export default function App() {
           onUserVolumeChange={(id, volume) => {
             setUserVolumes(prev => ({ ...prev, [id]: volume }));
             // Apply volume to remote audio (for 1-on-1 calls, this affects the other person)
-            if (id !== "spotify") {
+            if (id === "spotify") {
+              // Spotify volume is 0-100%, our slider is 0-200%
+              const spotifyVolume = Math.min(100, Math.round(volume));
+              fetch(`${SPOTIFY_API}/player/volume?volume_percent=${spotifyVolume}`, { method: "PUT" });
+            } else {
               setRemoteVolume(volume);
             }
           }}
