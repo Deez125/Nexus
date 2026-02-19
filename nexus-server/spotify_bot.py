@@ -723,11 +723,20 @@ class SpotifyBot:
         @pc.on("icecandidate")
         async def on_icecandidate(candidate):
             if candidate:
+                # Convert aiortc ICE candidate to browser-compatible format
+                # aiortc uses aioice.Candidate internally
+                candidate_str = f"candidate:{candidate.foundation} {candidate.component} {candidate.protocol} {candidate.priority} {candidate.ip} {candidate.port} typ {candidate.type}"
+                if candidate.relatedAddress:
+                    candidate_str += f" raddr {candidate.relatedAddress} rport {candidate.relatedPort}"
+                if candidate.tcpType:
+                    candidate_str += f" tcptype {candidate.tcpType}"
+
+                self.log(f"Sending ICE candidate to {peer_id}: {candidate_str[:50]}...")
                 await self._send({
                     "type": "ice_candidate",
                     "target": peer_id,
                     "candidate": {
-                        "candidate": candidate.candidate,
+                        "candidate": candidate_str,
                         "sdpMid": candidate.sdpMid,
                         "sdpMLineIndex": candidate.sdpMLineIndex
                     }
