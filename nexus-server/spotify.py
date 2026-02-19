@@ -440,6 +440,24 @@ async def get_album(album_id: str):
         return response.json()
 
 
+@router.get("/playlist/{playlist_id}")
+async def get_playlist(playlist_id: str):
+    """Get playlist details with tracks"""
+    if "access_token" not in tokens:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SPOTIFY_API_BASE}/playlists/{playlist_id}",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"}
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to get playlist")
+
+        return response.json()
+
+
 # =============================================================================
 # Spotify Bot Endpoints - Control the bot that joins calls to stream music
 # =============================================================================

@@ -1956,6 +1956,7 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
   const [user, setUser] = useState<{ name: string; image: string | null } | null>(null);
   const [artistView, setArtistView] = useState<{ id: string; name: string; image: string; followers: number; albums: { id: string; name: string; image: string; uri: string; releaseDate: string; type: string }[] } | null>(null);
   const [albumView, setAlbumView] = useState<{ id: string; name: string; image: string; artist: string; artistId: string; uri: string; releaseDate: string; tracks: { id: string; name: string; uri: string; duration: number; trackNumber: number }[] } | null>(null);
+  const [playlistView, setPlaylistView] = useState<{ id: string; name: string; image: string; owner: string; uri: string; tracks: { id: string; name: string; artist: string; artistId: string; albumArt: string; uri: string; duration: number }[] } | null>(null);
   const [previousTab, setPreviousTab] = useState<"playing" | "playlists" | "search">("search");
   const [botInCall, setBotInCall] = useState(false);
   const [botLoading, setBotLoading] = useState(false);
@@ -2289,6 +2290,38 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
     setLoading(false);
   };
 
+  // Open playlist page
+  const openPlaylist = async (playlistId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${SPOTIFY_API}/playlist/${playlistId}`);
+      if (res.ok) {
+        const playlist = await res.json();
+        setPlaylistView({
+          id: playlist.id,
+          name: playlist.name,
+          image: playlist.images?.[0]?.url || "",
+          owner: playlist.owner?.display_name || "Unknown",
+          uri: playlist.uri,
+          tracks: (playlist.tracks?.items || []).map((item: any) => ({
+            id: item.track?.id || "",
+            name: item.track?.name || "Unknown",
+            artist: item.track?.artists?.map((a: any) => a.name).join(", ") || "Unknown",
+            artistId: item.track?.artists?.[0]?.id || "",
+            albumArt: item.track?.album?.images?.[0]?.url || "",
+            uri: item.track?.uri || "",
+            duration: item.track?.duration_ms || 0,
+          })).filter((t: any) => t.id), // Filter out null tracks
+        });
+        if (activeTab !== "playlist") setPreviousTab(activeTab as "playing" | "playlists" | "search");
+        setActiveTab("playlist");
+      }
+    } catch (e) {
+      console.error("Failed to get playlist:", e);
+    }
+    setLoading(false);
+  };
+
   // Start OAuth login
   const handleConnect = async () => {
     try {
@@ -2577,7 +2610,7 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
                   }}
                   onMouseEnter={() => setHoverPlaylist(idx)}
                   onMouseLeave={() => setHoverPlaylist(null)}
-                  onClick={() => playPlaylist(playlist.uri)}
+                  onClick={() => openPlaylist(playlist.id)}
                 >
                   <div
                     style={{
@@ -2658,7 +2691,46 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
               </div>
             ) : (searchResults.tracks.length > 0 || searchResults.albums.length > 0 || searchResults.artists.length > 0) ? (
               <div style={{ marginTop: 12 }}>
-                {/* Artists Section */}
+                {/* Songs Section - First */}
+                {searchResults.tracks.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Songs</div>
+                    {searchResults.tracks.map((track) => (
+                      <div
+                        key={track.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "8px",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          transition: "background 0.15s",
+                        }}
+                        onClick={() => playTrack(track.uri)}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = T.bg2)}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <img src={track.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 4, objectFit: "cover" }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {track.name}
+                          </div>
+                          <div
+                            style={{ fontSize: 11, color: T.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}
+                            onClick={(e) => { e.stopPropagation(); openArtist(track.artistId); }}
+                            onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                            onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                          >
+                            {track.artist}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Artists Section - Second */}
                 {searchResults.artists.length > 0 && (
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Artists</div>
@@ -2692,9 +2764,9 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
                   </div>
                 )}
 
-                {/* Albums Section */}
+                {/* Albums Section - Third */}
                 {searchResults.albums.length > 0 && (
-                  <div style={{ marginBottom: 16 }}>
+                  <div>
                     <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Albums</div>
                     {searchResults.albums.map((album) => (
                       <div
@@ -2719,45 +2791,6 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
                           </div>
                           <div style={{ fontSize: 11, color: T.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {album.artist}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Tracks Section */}
-                {searchResults.tracks.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Songs</div>
-                    {searchResults.tracks.map((track) => (
-                      <div
-                        key={track.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "8px",
-                          borderRadius: 6,
-                          cursor: "pointer",
-                          transition: "background 0.15s",
-                        }}
-                        onClick={() => playTrack(track.uri)}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = T.bg2)}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                      >
-                        <img src={track.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 4, objectFit: "cover" }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 500, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {track.name}
-                          </div>
-                          <div
-                            style={{ fontSize: 11, color: T.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}
-                            onClick={(e) => { e.stopPropagation(); openArtist(track.artistId); }}
-                            onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                            onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
-                          >
-                            {track.artist}
                           </div>
                         </div>
                       </div>
@@ -2941,6 +2974,103 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {track.name}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11, color: T.textMuted }}>{formatTime(track.duration)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Playlist Page */}
+        {activeTab === "playlist" && playlistView && (
+          <div style={{ padding: 0 }}>
+            {/* Back button */}
+            <div
+              style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: T.textMuted, fontSize: 12 }}
+              onClick={() => { setActiveTab(previousTab); setPlaylistView(null); }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = T.text)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = T.textMuted)}
+            >
+              <BsChevronLeft size={14} /> Back
+            </div>
+
+            {/* Playlist Header */}
+            <div style={{ padding: "0 16px 16px" }}>
+              <div
+                style={{
+                  width: "100%",
+                  aspectRatio: "1",
+                  borderRadius: 8,
+                  background: playlistView.image ? `url(${playlistView.image}) center/cover` : `linear-gradient(135deg, #1DB954, #191414)`,
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {!playlistView.image && <BsMusicNoteList size={48} color="#fff" />}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 4 }}>{playlistView.name}</div>
+              <div style={{ fontSize: 12, color: T.textMuted }}>{playlistView.owner}</div>
+              <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>{playlistView.tracks.length} tracks</div>
+
+              {/* Play Playlist Button */}
+              <button
+                onClick={() => playPlaylist(playlistView.uri)}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  padding: "10px",
+                  background: "#1DB954",
+                  border: "none",
+                  borderRadius: 20,
+                  color: "#000",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  fontFamily: T.font,
+                }}
+              >
+                <BsPlayFill size={18} /> Play
+              </button>
+            </div>
+
+            {/* Track List */}
+            <div style={{ padding: "0 8px 16px" }}>
+              {playlistView.tracks.map((track, idx) => (
+                <div
+                  key={track.id || idx}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    transition: "background 0.15s",
+                  }}
+                  onClick={() => playTrack(track.uri)}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = T.bg2)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <img src={track.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 4, objectFit: "cover" }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {track.name}
+                    </div>
+                    <div
+                      style={{ fontSize: 11, color: T.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}
+                      onClick={(e) => { e.stopPropagation(); openArtist(track.artistId); }}
+                      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                    >
+                      {track.artist}
                     </div>
                   </div>
                   <span style={{ fontSize: 11, color: T.textMuted }}>{formatTime(track.duration)}</span>
