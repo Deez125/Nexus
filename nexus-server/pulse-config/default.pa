@@ -2,8 +2,7 @@
 # This creates a virtual sink that Chromium outputs to
 
 # Load the native protocol module with auth disabled for container use
-load-module module-native-protocol-unix auth-anonymous=1
-load-module module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse-server
+load-module module-native-protocol-unix auth-anonymous=1 auth-group=root
 
 # Create a virtual sink for capturing browser audio
 # This sink will receive all audio from Chromium
@@ -14,6 +13,9 @@ load-module module-null-sink sink_name=browser_audio sink_properties=device.desc
 
 # Set the virtual sink as the default output
 set-default-sink browser_audio
+
+# Set the monitor as default source
+set-default-source browser_audio.monitor
 
 # Allow network access (for debugging)
 load-module module-native-protocol-tcp auth-anonymous=1

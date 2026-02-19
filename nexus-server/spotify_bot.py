@@ -102,7 +102,7 @@ class SpotifyBot:
             # Launch Google Chrome (not Chromium) for Widevine DRM support
             # Chrome is installed at /usr/bin/google-chrome-stable
             self.state.browser = await self._playwright.chromium.launch(
-                headless=True,
+                headless=False,  # Use headed mode with Xvfb for audio output
                 executable_path='/usr/bin/google-chrome-stable',
                 args=[
                     '--no-sandbox',
@@ -110,8 +110,9 @@ class SpotifyBot:
                     '--autoplay-policy=no-user-gesture-required',
                     '--disable-web-security',
                     '--disable-features=IsolateOrigins,site-per-process',
-                    # Audio settings - use PulseAudio
+                    # Audio settings - force ALSA to use PulseAudio
                     '--use-fake-ui-for-media-stream',
+                    '--disable-gpu',
                     # Enable DRM/Widevine
                     '--enable-features=Widevine',
                 ]

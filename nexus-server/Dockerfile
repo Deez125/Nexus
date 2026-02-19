@@ -36,6 +36,9 @@ RUN apt-get update && apt-get install -y \
     # PulseAudio for audio capture
     pulseaudio \
     pulseaudio-utils \
+    # ALSA plugins for PulseAudio integration
+    libasound2-plugins \
+    alsa-utils \
     # X virtual framebuffer for headless GUI
     xvfb \
     && rm -rf /var/lib/apt/lists/*
