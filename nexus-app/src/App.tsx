@@ -1937,7 +1937,7 @@ function SpotifyControlBtn({ children, onClick, size = 32, active = false }: { c
 const SPOTIFY_API = "https://nexus-api.pulpfliction.com/api/spotify";
 
 function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }: { isConnected: boolean; onConnect: () => void; onDisconnect: () => void }) {
-  const [activeTab, setActiveTab] = useState<"playing" | "playlists" | "search" | "artist" | "album">("playing");
+  const [activeTab, setActiveTab] = useState<"playing" | "playlists" | "search" | "artist" | "album" | "playlist">("playing");
   const [isPlaying, setIsPlaying] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<"off" | "context" | "track">("off");
