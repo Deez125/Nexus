@@ -228,7 +228,10 @@ class SpotifyBot:
     async def _send(self, data: dict):
         """Send a message via WebSocket"""
         if self.state.ws and not self.state.ws.closed:
-            await self.state.ws.send_str(json.dumps(data))
+            try:
+                await self.state.ws.send_str(json.dumps(data))
+            except Exception as e:
+                self.log(f"Failed to send message: {e}")
 
     async def join_call(self):
         """Join the voice call"""
@@ -275,9 +278,13 @@ class SpotifyBot:
 
         self.log("Leaving call...")
 
-        await self._send({
-            "type": "call_leave"
-        })
+        # Try to send leave message, but don't fail if WS is closed
+        try:
+            await self._send({
+                "type": "call_leave"
+            })
+        except Exception as e:
+            self.log(f"Could not send leave message (WS may be closed): {e}")
 
         # Stop audio capture
         if self.state.audio_capture:
