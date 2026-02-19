@@ -597,9 +597,16 @@ class SpotifyBot:
         """Handle when a user joins the call - create peer connection"""
         user_id = data.get("client_id")
         username = data.get("username")
+        participants = data.get("participants", [])
 
+        # If this is our own join event, create connections to all existing participants
         if user_id == BOT_CLIENT_ID:
-            return  # Ignore self
+            self.log(f"Bot joined call, participants: {participants}")
+            for participant_id in participants:
+                if participant_id != BOT_CLIENT_ID and participant_id not in self.state.peer_connections:
+                    self.log(f"Creating peer connection to existing participant: {participant_id}")
+                    await self._create_peer_connection(participant_id, create_offer=True)
+            return
 
         self.log(f"{username} joined the call")
 
