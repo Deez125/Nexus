@@ -2052,8 +2052,15 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
   // Playback controls
   const togglePlay = async () => {
     try {
-      const endpoint = isPlaying ? "pause" : "play";
-      await fetch(`${SPOTIFY_API}/player/${endpoint}`, { method: "PUT" });
+      if (botInCall) {
+        // Use bot endpoints when streaming to call
+        const endpoint = isPlaying ? "pause" : "resume";
+        await fetch(`${SPOTIFY_API}/bot/${endpoint}`, { method: "POST" });
+      } else {
+        // Use regular Spotify API
+        const endpoint = isPlaying ? "pause" : "play";
+        await fetch(`${SPOTIFY_API}/player/${endpoint}`, { method: "PUT" });
+      }
       setIsPlaying(!isPlaying);
     } catch (e) {
       console.error("Failed to toggle play:", e);
@@ -2062,7 +2069,11 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
 
   const skipNext = async () => {
     try {
-      await fetch(`${SPOTIFY_API}/player/next`, { method: "POST" });
+      if (botInCall) {
+        await fetch(`${SPOTIFY_API}/bot/next`, { method: "POST" });
+      } else {
+        await fetch(`${SPOTIFY_API}/player/next`, { method: "POST" });
+      }
       setTimeout(fetchPlayerState, 300);
     } catch (e) {
       console.error("Failed to skip:", e);
@@ -2071,7 +2082,11 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
 
   const skipPrevious = async () => {
     try {
-      await fetch(`${SPOTIFY_API}/player/previous`, { method: "POST" });
+      if (botInCall) {
+        await fetch(`${SPOTIFY_API}/bot/previous`, { method: "POST" });
+      } else {
+        await fetch(`${SPOTIFY_API}/player/previous`, { method: "POST" });
+      }
       setTimeout(fetchPlayerState, 300);
     } catch (e) {
       console.error("Failed to go previous:", e);
@@ -2119,7 +2134,12 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
 
   const playPlaylist = async (uri: string) => {
     try {
-      await fetch(`${SPOTIFY_API}/player/play?context_uri=${encodeURIComponent(uri)}`, { method: "PUT" });
+      // Use bot endpoint if bot is in call, otherwise use regular Spotify API
+      if (botInCall) {
+        await fetch(`${SPOTIFY_API}/bot/play?uri=${encodeURIComponent(uri)}`, { method: "POST" });
+      } else {
+        await fetch(`${SPOTIFY_API}/player/play?context_uri=${encodeURIComponent(uri)}`, { method: "PUT" });
+      }
       setIsPlaying(true);
       setTimeout(fetchPlayerState, 500);
     } catch (e) {
@@ -2129,7 +2149,12 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
 
   const playTrack = async (uri: string) => {
     try {
-      await fetch(`${SPOTIFY_API}/player/play?uri=${encodeURIComponent(uri)}`, { method: "PUT" });
+      // Use bot endpoint if bot is in call, otherwise use regular Spotify API
+      if (botInCall) {
+        await fetch(`${SPOTIFY_API}/bot/play?uri=${encodeURIComponent(uri)}`, { method: "POST" });
+      } else {
+        await fetch(`${SPOTIFY_API}/player/play?uri=${encodeURIComponent(uri)}`, { method: "PUT" });
+      }
       setIsPlaying(true);
       setTimeout(fetchPlayerState, 500);
     } catch (e) {
