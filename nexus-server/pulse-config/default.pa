@@ -1,8 +1,9 @@
 # PulseAudio configuration for headless audio capture
 # This creates a virtual sink that Chromium outputs to
 
-# Load the native protocol module
-load-module module-native-protocol-unix
+# Load the native protocol module with auth disabled for container use
+load-module module-native-protocol-unix auth-anonymous=1
+load-module module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse-server
 
 # Create a virtual sink for capturing browser audio
 # This sink will receive all audio from Chromium

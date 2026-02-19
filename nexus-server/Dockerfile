@@ -74,6 +74,8 @@ EXPOSE 8765
 # Environment variables (can be overridden)
 ENV HOST=0.0.0.0
 ENV PORT=8765
+ENV PULSE_SERVER=unix:/tmp/pulse-server
+ENV XDG_RUNTIME_DIR=/tmp
 
 # Run the server with PulseAudio
 CMD ["/start.sh"]

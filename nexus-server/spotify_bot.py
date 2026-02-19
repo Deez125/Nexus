@@ -112,7 +112,6 @@ class SpotifyBot:
                     '--disable-features=IsolateOrigins,site-per-process',
                     # Audio settings - use PulseAudio
                     '--use-fake-ui-for-media-stream',
-                    '--alsa-output-device=pulse',
                     # Enable DRM/Widevine
                     '--enable-features=Widevine',
                 ]
@@ -709,8 +708,10 @@ class SpotifyBot:
             self.log(f"Connection state with {peer_id}: {pc.connectionState}")
 
         # Add audio track to peer connection
-        if self.state.audio_track:
-            pc.addTrack(self.state.audio_track)
+        # Each peer connection needs its own track instance
+        if self.state.audio_capture and self.state.audio_capture.is_running:
+            track = SpotifyAudioTrack(self.state.audio_capture)
+            pc.addTrack(track)
             self.log(f"Added audio track to peer connection with {peer_id}")
 
         # Create offer if requested
