@@ -975,6 +975,15 @@ function useWebRTC({ onRemoteStream, onLocalVideoStream, onRemoteVideoStream, se
     setIsVideoEnabled(false);
   }, [onLocalVideoStream, onRemoteVideoStream]);
 
+  // Set volume for remote audio (0-200, where 100 is normal)
+  const setRemoteVolume = useCallback((volumePercent: number) => {
+    if (remoteAudioRef.current) {
+      // Convert 0-200 range to 0-2 range (where 1 is normal volume)
+      remoteAudioRef.current.volume = Math.min(2, Math.max(0, volumePercent / 100));
+      console.log("[WebRTC] Set remote audio volume to:", volumePercent, "%");
+    }
+  }, []);
+
   return {
     startCall,
     endCall,
@@ -984,6 +993,7 @@ function useWebRTC({ onRemoteStream, onLocalVideoStream, onRemoteVideoStream, se
     isAudioEnabled,
     isVideoEnabled,
     connectionState,
+    setRemoteVolume,
   };
 }
 
@@ -1068,6 +1078,10 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [spotifyConnected, setSpotifyConnected] = useState(false);
+  const [spotifyTrack, setSpotifyTrack] = useState<{ name: string; artist: string; artistId?: string; album: string; albumArt: string; duration: number; progress: number } | null>(null);
+  const [spotifyIsPlaying, setSpotifyIsPlaying] = useState(false);
+  const [spotifyProgress, setSpotifyProgress] = useState(0);
+  const [userVolumes, setUserVolumes] = useState<Record<string, number>>({});
   const [debugUsers, setDebugUsers] = useState<{ id: string; name: string; color: string }[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callAreaRef = useRef<HTMLDivElement>(null);
@@ -1113,6 +1127,7 @@ export default function App() {
     toggleMute: webrtcToggleMute,
     toggleVideo: webrtcToggleVideo,
     connectionState,
+    setRemoteVolume,
   } = useWebRTC({
     sendSignal: sendWebRTCSignal,
     selectedInputDeviceId: selectedInputId,
@@ -1304,6 +1319,37 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: ${T.textMuted}; border-radius: 4px; }
         input::placeholder { color: ${T.textMuted}; }
         input:focus { outline: none; }
+        input[type="range"] {
+          -webkit-appearance: none;
+          appearance: none;
+          background: transparent;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: ${T.text};
+          cursor: pointer;
+          margin-top: -4px;
+        }
+        input[type="range"]::-moz-range-thumb {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: ${T.text};
+          cursor: pointer;
+          border: none;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+          height: 4px;
+          border-radius: 2px;
+        }
+        input[type="range"]::-moz-range-track {
+          height: 4px;
+          border-radius: 2px;
+        }
       `}</style>
 
       <div style={s.app} onContextMenu={(e) => handleContextMenu(e, "general")}>
@@ -1345,6 +1391,46 @@ export default function App() {
               <div style={{ padding: "40px 20px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>Add friend functionality coming soon</div>
             )}
           </div>
+
+          {/* Spotify User Box */}
+          {spotifyConnected && (
+            <SpotifyUserBox
+              track={spotifyTrack}
+              isPlaying={spotifyIsPlaying}
+              progress={spotifyProgress}
+              onTogglePlay={async () => {
+                try {
+                  await fetch(`${SPOTIFY_API}/${spotifyIsPlaying ? "pause" : "play"}`, { method: "PUT" });
+                } catch (e) {
+                  console.error("Failed to toggle playback:", e);
+                }
+              }}
+              onSkipPrevious={async () => {
+                try {
+                  await fetch(`${SPOTIFY_API}/previous`, { method: "POST" });
+                } catch (e) {
+                  console.error("Failed to skip previous:", e);
+                }
+              }}
+              onSkipNext={async () => {
+                try {
+                  await fetch(`${SPOTIFY_API}/next`, { method: "POST" });
+                } catch (e) {
+                  console.error("Failed to skip next:", e);
+                }
+              }}
+              onSeek={async (percent: number) => {
+                if (!spotifyTrack) return;
+                const positionMs = Math.floor((percent / 100) * spotifyTrack.duration);
+                try {
+                  await fetch(`${SPOTIFY_API}/seek?position_ms=${positionMs}`, { method: "PUT" });
+                } catch (e) {
+                  console.error("Failed to seek:", e);
+                }
+              }}
+              onClick={() => setRightSidebarOpen(true)}
+            />
+          )}
 
           <div
             style={{ ...s.userCard, cursor: "pointer" }}
@@ -1752,6 +1838,15 @@ export default function App() {
                           }
                         }
                       }}
+                      userVolume={userVolumes[contextMenu.data?.tileId || contextMenu.data?.id] ?? 100}
+                      onUserVolumeChange={(id, volume) => {
+                        setUserVolumes(prev => ({ ...prev, [id]: volume }));
+                        // Apply volume to remote audio (for 1-on-1 calls, this affects the other person)
+                        // In the future, multi-peer support could use the id to target specific users
+                        if (id !== "spotify") {
+                          setRemoteVolume(volume);
+                        }
+                      }}
                     />
                   )}
                 </div>
@@ -1859,7 +1954,7 @@ export default function App() {
 
         {/* Right Sidebar - Spotify */}
         {rightSidebarOpen && (
-          <SpotifySidebar isConnected={spotifyConnected} onConnect={() => setSpotifyConnected(true)} onDisconnect={() => setSpotifyConnected(false)} />
+          <SpotifySidebar isConnected={spotifyConnected} onConnect={() => setSpotifyConnected(true)} onDisconnect={() => setSpotifyConnected(false)} onTrackChange={setSpotifyTrack} onPlayingChange={setSpotifyIsPlaying} onProgressChange={setSpotifyProgress} />
         )}
 
       </div>
@@ -1881,6 +1976,14 @@ export default function App() {
               } else if (tileId.startsWith("debug_")) {
                 setDebugUsers(debugUsers.filter(u => u.id !== tileId));
               }
+            }
+          }}
+          userVolume={userVolumes[contextMenu.data?.tileId || contextMenu.data?.id] ?? 100}
+          onUserVolumeChange={(id, volume) => {
+            setUserVolumes(prev => ({ ...prev, [id]: volume }));
+            // Apply volume to remote audio (for 1-on-1 calls, this affects the other person)
+            if (id !== "spotify") {
+              setRemoteVolume(volume);
             }
           }}
         />,
@@ -1936,7 +2039,7 @@ function SpotifyControlBtn({ children, onClick, size = 32, active = false }: { c
 // Always use production API
 const SPOTIFY_API = "https://nexus-api.pulpfliction.com/api/spotify";
 
-function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }: { isConnected: boolean; onConnect: () => void; onDisconnect: () => void }) {
+function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect, onTrackChange, onPlayingChange, onProgressChange }: { isConnected: boolean; onConnect: () => void; onDisconnect: () => void; onTrackChange?: (track: { name: string; artist: string; artistId?: string; album: string; albumArt: string; duration: number; progress: number } | null) => void; onPlayingChange?: (playing: boolean) => void; onProgressChange?: (progress: number) => void }) {
   const [activeTab, setActiveTab] = useState<"playing" | "playlists" | "search" | "artist" | "album" | "playlist">("playing");
   const [isPlaying, setIsPlaying] = useState(false);
   const [shuffle, setShuffle] = useState(false);
@@ -1976,7 +2079,7 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
       if (res.ok) {
         const data = await res.json();
         if (data.item) {
-          setCurrentTrack({
+          const track = {
             name: data.item.name,
             artist: data.item.artists?.map((a: any) => a.name).join(", ") || "Unknown",
             artistId: data.item.artists?.[0]?.id,
@@ -1984,22 +2087,32 @@ function SpotifySidebar({ isConnected, onConnect, onDisconnect: _onDisconnect }:
             albumArt: data.item.album?.images?.[0]?.url || "",
             duration: data.item.duration_ms || 0,
             progress: data.progress_ms || 0,
-          });
+          };
+          setCurrentTrack(track);
+          onTrackChange?.(track);
           setIsPlaying(data.is_playing || false);
+          onPlayingChange?.(data.is_playing || false);
           setShuffle(data.shuffle_state || false);
           setRepeat(data.repeat_state || "off");
           if (data.item.duration_ms) {
-            setProgress((data.progress_ms / data.item.duration_ms) * 100);
+            const prog = (data.progress_ms / data.item.duration_ms) * 100;
+            setProgress(prog);
+            onProgressChange?.(prog);
           }
           if (data.device?.volume_percent !== undefined) {
             setVolume(data.device.volume_percent);
           }
+        } else {
+          setCurrentTrack(null);
+          onTrackChange?.(null);
+          setIsPlaying(false);
+          onPlayingChange?.(false);
         }
       }
     } catch (e) {
       console.error("Failed to fetch player state:", e);
     }
-  }, []);
+  }, [onTrackChange, onPlayingChange, onProgressChange]);
 
   // Fetch playlists
   const fetchPlaylists = useCallback(async () => {
@@ -3104,6 +3217,232 @@ function FriendItem({ friend, active, onClick, onContextMenu }: { friend: { id: 
   );
 }
 
+// Format time helper for Spotify
+const formatSpotifyTime = (ms: number) => {
+  const seconds = Math.floor(ms / 1000);
+  const m = Math.floor(seconds / 60);
+  const sec = seconds % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+};
+
+function SpotifyUserBox({ track, isPlaying, progress, onTogglePlay, onSkipPrevious, onSkipNext, onSeek, onClick }: {
+  track: { name: string; artist: string; artistId?: string; album: string; albumArt: string; duration: number; progress: number } | null;
+  isPlaying: boolean;
+  progress: number;
+  onTogglePlay: () => void;
+  onSkipPrevious: () => void;
+  onSkipNext: () => void;
+  onSeek: (percent: number) => void;
+  onClick: () => void;
+}) {
+  const [h, setH] = useState(false);
+
+  // When nothing is playing (no track or no track name), show simple Spotify user box
+  if (!track || !track.name) {
+    return (
+      <div
+        style={{
+          padding: "10px 12px",
+          borderTop: `1px solid ${T.border}`,
+          cursor: "pointer",
+          background: h ? T.bg2 : "transparent",
+          transition: "background 0.12s",
+        }}
+        onMouseEnter={() => setH(true)}
+        onMouseLeave={() => setH(false)}
+        onClick={onClick}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <BsSpotify size={20} color="#000" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Spotify</div>
+            <div style={{ fontSize: 11, color: T.textMuted }}>Connected</div>
+          </div>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#1DB954" }} />
+        </div>
+      </div>
+    );
+  }
+
+  // When something is playing, show album art with controls
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderTop: `1px solid ${T.border}`,
+        background: T.bg2,
+      }}
+    >
+      {/* Album Art with controls overlay */}
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: "1",
+          borderRadius: 8,
+          overflow: "hidden",
+          marginBottom: 8,
+          cursor: "pointer",
+        }}
+        onClick={onClick}
+      >
+        <img
+          src={track.albumArt}
+          alt={track.album}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+        {/* Gradient overlay for controls */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: "60%",
+            background: "linear-gradient(to top, rgba(0,0,0,0.8), transparent)",
+            pointerEvents: "none",
+          }}
+        />
+        {/* Controls - positioned at bottom */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 8,
+            left: 0,
+            right: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 4,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={onSkipPrevious}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.1)",
+              border: "none",
+              color: "#fff",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.2)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+          >
+            <BsSkipStartFill size={16} />
+          </button>
+          <button
+            onClick={onTogglePlay}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "#fff",
+              border: "none",
+              color: "#000",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "transform 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          >
+            {isPlaying ? <BsPauseFill size={20} /> : <BsPlayFill size={20} style={{ marginLeft: 2 }} />}
+          </button>
+          <button
+            onClick={onSkipNext}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.1)",
+              border: "none",
+              color: "#fff",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.2)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+          >
+            <BsSkipEndFill size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ marginBottom: 6 }}>
+        <div
+          style={{
+            height: 3,
+            background: T.bg3,
+            borderRadius: 2,
+            cursor: "pointer",
+            position: "relative",
+          }}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = ((e.clientX - rect.left) / rect.width) * 100;
+            onSeek(Math.max(0, Math.min(100, pct)));
+          }}
+        >
+          <div
+            style={{
+              width: `${progress}%`,
+              height: "100%",
+              background: "#1DB954",
+              borderRadius: 2,
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, color: T.textMuted }}>
+          <span>{formatSpotifyTime(track.progress)}</span>
+          <span>{formatSpotifyTime(track.duration)}</span>
+        </div>
+      </div>
+
+      {/* Track info */}
+      <div style={{ textAlign: "center" }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: T.text,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {track.name}
+        </div>
+        <div
+          style={{
+            fontSize: 10,
+            color: T.textMuted,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {track.artist}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Msg({ msg, myUsername, onContextMenu, isFirst }: { msg: { id: number; from: string; time: string; text: string }; myUsername: string; onContextMenu: (e: React.MouseEvent) => void; isFirst: boolean }) {
   const [h, setH] = useState(false);
   const isMe = msg.from === "me";
@@ -3580,17 +3919,21 @@ function GifPicker({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ContextMenu({ x, y, type, data, onClose, onTileAction }: { x: number; y: number; type: string; data?: any; onClose: () => void; onTileAction?: (action: string, tileId: string) => void }) {
-  const [hoveredItem, setHoveredItem] = useState<number | null>(null);
+function ContextMenu({ x, y, type, data, onClose, onTileAction, userVolume, onUserVolumeChange }: { x: number; y: number; type: string; data?: any; onClose: () => void; onTileAction?: (action: string, tileId: string) => void; userVolume?: number; onUserVolumeChange?: (tileId: string, volume: number) => void }) {
+  const [hoveredItem, setHoveredItem] = useState<number | string | null>(null);
+  const [localVolume, setLocalVolume] = useState(userVolume ?? 100);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Adjust position if menu would go off screen
-  const adjustedX = Math.min(x, window.innerWidth - 200);
-  const adjustedY = Math.min(y, window.innerHeight - 300);
+  const adjustedX = Math.min(x, window.innerWidth - 220);
+  const adjustedY = Math.min(y, window.innerHeight - 350);
+
+  // Show volume slider for tile and friend menus (not for "me" tile)
+  const showVolumeSlider = (type === "tile" || type === "friend") && data?.tileId !== "me";
 
   const menuItems = type === "tile" ? [
     { icon: <HiUserCircle size={14} />, label: "View Profile", action: () => {} },
-    { icon: <HiVolumeUp size={14} />, label: "Adjust Volume", action: () => {} },
+    { id: "volume-slider", volumeSlider: true },
     { divider: true },
     { icon: <ImPhoneHangUp size={14} />, label: `Disconnect ${data?.tileName || "User"}`, danger: true, action: () => onTileAction?.("disconnect", data?.tileId) },
   ] : type === "message" ? [
@@ -3606,7 +3949,7 @@ function ContextMenu({ x, y, type, data, onClose, onTileAction }: { x: number; y
     { icon: <HiUserCircle size={14} />, label: "View Profile", action: () => {} },
     { icon: <HiPencil size={14} />, label: "Edit Nickname", action: () => {} },
     { divider: true },
-    { icon: <HiVolumeUp size={14} />, label: "Mute", action: () => {} },
+    { id: "volume-slider", volumeSlider: true },
     { icon: <HiBan size={14} />, label: "Block", danger: true, action: () => {} },
   ] : [
     { icon: <IoRefresh size={14} />, label: "Refresh", action: () => {} },
@@ -3652,7 +3995,46 @@ function ContextMenu({ x, y, type, data, onClose, onTileAction }: { x: number; y
       {menuItems.map((item, idx) =>
         item.divider ? (
           <div key={idx} style={{ height: 1, background: T.border, margin: "4px 8px" }} />
-        ) : (
+        ) : item.volumeSlider && showVolumeSlider ? (
+          <div
+            key={item.id || idx}
+            style={{
+              padding: "8px 12px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <HiVolumeUp size={14} color={T.textSoft} />
+              <span style={{ fontSize: 12, color: T.textSoft, flex: 1 }}>User Volume</span>
+              <span style={{ fontSize: 11, color: T.textMuted, minWidth: 32, textAlign: "right" }}>{Math.round(localVolume)}%</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="200"
+              value={localVolume}
+              onChange={(e) => {
+                const newVolume = parseInt(e.target.value);
+                setLocalVolume(newVolume);
+                onUserVolumeChange?.(data?.tileId || data?.id, newVolume);
+              }}
+              style={{
+                width: "100%",
+                height: 4,
+                background: `linear-gradient(to right, ${T.accent} ${localVolume / 2}%, ${T.bg4} ${localVolume / 2}%)`,
+                borderRadius: 2,
+                cursor: "pointer",
+                WebkitAppearance: "none",
+                appearance: "none",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, color: T.textMuted }}>
+              <span>0%</span>
+              <span style={{ color: localVolume > 100 ? T.orange : T.textMuted }}>100%</span>
+              <span>200%</span>
+            </div>
+          </div>
+        ) : item.volumeSlider ? null : (
           <div
             key={idx}
             style={{
